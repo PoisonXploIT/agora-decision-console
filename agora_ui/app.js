@@ -73,29 +73,57 @@ function renderModelos() {
   });
 }
 
+let CATALOG = [];
+
+async function cargarCatalogo() {
+  const d = await jsonFetch("/catalog");
+  CATALOG = d.catalog || [];
+  $("m-preset").innerHTML =
+    CATALOG.map((c, i) => `<option value="${i}">${esc(c.label)}</option>`).join("") +
+    '<option value="-1">personalizado...</option>';
+  aplicarPreset();
+}
+
+function aplicarPreset() {
+  const i = parseInt($("m-preset").value, 10);
+  if (i < 0) {
+    $("m-key-label").style.display = "";
+    return;
+  }
+  const c = CATALOG[i];
+  $("m-nombre").value = c.name;
+  $("m-url").value = c.base_url || "";
+  $("m-key-label").style.display = c.needs_key ? "" : "none";
+  $("m-key").placeholder = c.needs_key ? "clave de la API" : "no hace falta (local)";
+}
+
 async function addModelo() {
   const nombre = $("m-nombre").value.trim();
   if (!nombre) {
     $("m-msg").textContent = "pon un nombre";
     return;
   }
+  const i = parseInt($("m-preset").value, 10);
+  const preset = i >= 0 ? CATALOG[i] : null;
+  const kind = preset ? preset.kind : "http";
   const body = {
     name: nombre,
-    kind: $("m-tipo").value,
-    base_url: $("m-url").value.trim() || null,
+    kind,
+    base_url: kind === "mock" ? null : $("m-url").value.trim() || null,
     api_key: $("m-key").value.trim() || null,
   };
-  $("m-msg").textContent = "anadiendo...";
+  if (preset && preset.needs_key && !body.api_key) {
+    $("m-msg").textContent = "esta API necesita clave";
+    return;
+  }
+  $("m-msg").textContent = "guardando...";
   try {
     await jsonFetch("/backends", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    $("m-nombre").value = "";
-    $("m-url").value = "";
-    $("m-key").value = "";
-    $("m-msg").textContent = "anadido";
+    $("m-msg").textContent = "guardado y persistido";
     await cargarBackends();
   } catch (e) {
     $("m-msg").textContent = "error: " + e.message;
@@ -329,9 +357,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   try {
     await cargarBackends();
     await cargarPacks();
+    await cargarCatalogo();
   } catch (e) {
     $("traza").textContent = String(e);
   }
+
+  $("m-preset").addEventListener("change", aplicarPreset);
 
   $("parte").addEventListener("change", () => {
     chip("chip-parte", $("parte").value);

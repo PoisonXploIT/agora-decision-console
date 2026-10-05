@@ -59,35 +59,93 @@ class FromTextBody(BaseModel):
     type: str | None = Field(default=None, description="tipo preferido: choice | score | noul")
 
 
+# Catalogo de modelos conocidos: local (sin clave) o API cloud (con clave).
+CATALOG = [
+    {
+        "name": "laya",
+        "label": "LAYAA v2 (local, CPU)",
+        "kind": "http",
+        "base_url": "http://127.0.0.1:8787",
+        "needs_key": False,
+        "privacy": "local",
+    },
+    {
+        "name": "eikos-4b",
+        "label": "Eikos-4B (local, GPU)",
+        "kind": "http",
+        "base_url": "http://127.0.0.1:8901",
+        "needs_key": False,
+        "privacy": "local",
+    },
+    {
+        "name": "jev",
+        "label": "JEV / TypeSafe (cloud, API)",
+        "kind": "http",
+        "base_url": "https://api.typesafe.ai",
+        "needs_key": True,
+        "privacy": "cloud",
+    },
+    {
+        "name": "mock",
+        "label": "Mock (falso, sin modelo)",
+        "kind": "mock",
+        "base_url": None,
+        "needs_key": False,
+        "privacy": "local",
+    },
+]
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="AGORA", version="0.0.1")
     registry: dict[str, Any] = {"mock": MockAdapter()}
     runs: list[dict] = []
+    from agora_serve import store
 
-    # Backends opcionales por entorno. Sin nube por defecto. LAYA local viene activo salvo
-    # AGORA_LAYAA=0; Eikos y JEV solo si se les da URL.
-    if os.environ.get("AGORA_LAYAA", "1") != "0":
-        try:
+    def build(cfg: dict) -> Any:
+        """Crea un adaptador a partir de una config {name,kind,base_url,api_key,model}."""
+        kind = str(cfg.get("kind") or "http").strip().lower()
+        name = str(cfg.get("name") or "").strip().lower()
+        if kind == "mock":
+            adapter: Any = MockAdapter()
+        else:
+            # LAYA local, JEV API y Eikos serve hablan la misma API compatible TypeSafe.
             from agora_adapters import LayaAdapter
 
-            registry["laya"] = LayaAdapter(
-                base_url=os.environ.get("AGORA_LAYAA_URL", "http://127.0.0.1:8787"),
-                api_key=os.environ.get("LAYA_API_KEY") or None,
+            adapter = LayaAdapter(
+                base_url=cfg.get("base_url") or "http://127.0.0.1:8787",
+                api_key=cfg.get("api_key") or None,
+                model=cfg.get("model") or None,
+            )
+        if name:
+            adapter.name = name
+        return adapter
+
+    # 1) Backends persistidos (los que se configuraron en la UI).
+    for cfg in store.load():
+        try:
+            registry[cfg["name"].strip().lower()] = build(cfg)
+        except Exception:  # noqa: BLE001
+            pass
+
+    # 2) Por entorno: LAYA local activo salvo AGORA_LAYAA=0 (si no esta ya persistido).
+    if os.environ.get("AGORA_LAYAA", "1") != "0" and "laya" not in registry:
+        try:
+            registry["laya"] = build(
+                {
+                    "name": "laya",
+                    "kind": "http",
+                    "base_url": os.environ.get("AGORA_LAYAA_URL", "http://127.0.0.1:8787"),
+                    "api_key": os.environ.get("LAYA_API_KEY") or None,
+                }
             )
         except Exception:  # noqa: BLE001
             pass
-    if os.environ.get("AGORA_EIKOS_URL"):
+    if os.environ.get("AGORA_EIKOS_URL") and "eikos" not in registry:
         try:
-            from agora_adapters import EikosAdapter
-
-            registry["eikos"] = EikosAdapter(base_url=os.environ["AGORA_EIKOS_URL"])
-        except Exception:  # noqa: BLE001
-            pass
-    if os.environ.get("AGORA_JEV_URL"):
-        try:
-            from agora_adapters import JevAdapter
-
-            registry["jev"] = JevAdapter(base_url=os.environ["AGORA_JEV_URL"])
+            registry["eikos"] = build(
+                {"name": "eikos", "kind": "http", "base_url": os.environ["AGORA_EIKOS_URL"]}
+            )
         except Exception:  # noqa: BLE001
             pass
 
@@ -101,6 +159,10 @@ def create_app() -> FastAPI:
     def health() -> dict:
         return {"ok": True, "service": "agora", "backends": list(registry)}
 
+    @app.get("/catalog")
+    def catalog() -> dict:
+        return {"catalog": CATALOG}
+
     @app.get("/backends")
     def backends() -> dict:
         return {
@@ -109,28 +171,38 @@ def create_app() -> FastAPI:
 
     @app.post("/backends")
     def add_backend(cfg: BackendConfig) -> dict:
-        """Registra un backend en caliente. Local o API; la clave no se guarda."""
+        """Registra un backend en caliente y lo PERSISTE en el perfil del usuario."""
         name = cfg.name.strip().lower()
+        if not name:
+            raise HTTPException(status_code=422, detail="nombre requerido")
         kind = (cfg.kind or "http").strip().lower()
-        if kind == "mock":
-            adapter: Any = MockAdapter()
-        elif kind in ("http", "typesafe", "laya", "eikos", "jev"):
-            # Todos hablan la API compatible TypeSafe (/v1/systemone): LAYA local,
-            # JEV cloud o Eikos serve. Distinto base_url y clave.
-            from agora_adapters import LayaAdapter
-
-            adapter = LayaAdapter(
-                base_url=cfg.base_url or "http://127.0.0.1:8787",
-                api_key=cfg.api_key or None,
-                model=cfg.model or None,
-            )
-            adapter.name = name
-        else:
+        if kind not in ("mock", "http", "typesafe", "laya", "eikos", "jev"):
             raise HTTPException(status_code=422, detail=f"kind desconocido: {kind!r}")
+        try:
+            adapter = build(
+                {
+                    "name": name,
+                    "kind": kind,
+                    "base_url": cfg.base_url,
+                    "api_key": cfg.api_key,
+                    "model": cfg.model,
+                }
+            )
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=422, detail=f"no se pudo crear el backend: {e}") from e
         registry[name] = adapter
+        store.upsert(
+            {
+                "name": name,
+                "kind": "mock" if kind == "mock" else "http",
+                "base_url": cfg.base_url,
+                "api_key": cfg.api_key,
+                "model": cfg.model,
+            }
+        )
         info = adapter.info().model_dump()
         info["name"] = name
-        return {"ok": True, "backend": info, "backends": list(registry)}
+        return {"ok": True, "backend": info, "backends": list(registry), "persistido": True}
 
     @app.delete("/backends/{name}")
     def del_backend(name: str) -> dict:
@@ -140,6 +212,7 @@ def create_app() -> FastAPI:
         if name not in registry:
             raise HTTPException(status_code=404, detail="backend no registrado")
         registry.pop(name, None)
+        store.remove(name)
         return {"ok": True, "backends": list(registry)}
 
     @app.post("/v1/questions/from-text")

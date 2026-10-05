@@ -7,7 +7,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg?v=2">
   <link rel="shortcut icon" type="image/svg+xml" href="favicon.svg?v=2">
   <link rel="apple-touch-icon" href="favicon.svg?v=2">
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=4">
 </head>
 <body>
   <header class="top">
@@ -55,7 +55,7 @@
         <button id="decidir" class="primary" type="button">Decidir</button>
       </div>
 
-      <h3 class="sec">Pregunta desde texto <span class="muted">(modelo local)</span></h3>
+      <h3 class="sec">Pregunta desde texto <span class="muted">(la genera un LLM de chat local, no el modelo de decision)</span></h3>
       <label class="bloque">Instruccion en lenguaje natural
         <textarea id="nl" rows="2" spellcheck="false"
           placeholder="ej: clasifica un comando bash en seguro, dudoso o peligroso"></textarea>
@@ -88,29 +88,28 @@
       <h2>Modelos de decision <span class="muted">local o API</span></h2>
       <div id="lista-backends" class="modelos"></div>
       <div class="fila" style="margin-top:12px">
-        <label>Nombre
-          <input id="m-nombre" type="text" placeholder="mi-modelo" style="font-family:var(--mono)">
+        <label>Modelo
+          <select id="m-preset"></select>
         </label>
-        <label>Tipo
-          <select id="m-tipo">
-            <option value="http">HTTP TypeSafe (LAYAA local, JEV API, Eikos)</option>
-            <option value="mock">Mock (falso, sin modelo)</option>
-          </select>
+        <label>Nombre
+          <input id="m-nombre" type="text" placeholder="laya" style="font-family:var(--mono)">
         </label>
         <label class="grow">URL base
-          <input id="m-url" type="text" placeholder="http://127.0.0.1:8787  o  https://api.typesafe.ai" style="font-family:var(--mono)">
+          <input id="m-url" type="text" placeholder="http://127.0.0.1:8787" style="font-family:var(--mono)">
         </label>
-        <label class="grow">Clave (API, opcional)
-          <input id="m-key" type="password" placeholder="solo vive en memoria" style="font-family:var(--mono)">
+        <label class="grow" id="m-key-label">Clave (solo cloud / API)
+          <input id="m-key" type="password" placeholder="JEV u otra API" style="font-family:var(--mono)">
         </label>
       </div>
       <div class="fila acciones">
-        <button id="m-add" class="primary" type="button">Anadir modelo</button>
+        <button id="m-add" class="primary" type="button">Guardar modelo</button>
         <span class="muted" id="m-msg"></span>
       </div>
+      <p class="muted">Los modelos locales (LAYAA, Eikos-4B) no usan clave: apuntan a su servidor local.
+      Los cloud (JEV) si, y la clave se guarda en tu perfil (nunca en el repo).</p>
     </section>
   </main>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=4"></script>
 </body>
 </html>
