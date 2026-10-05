@@ -15,6 +15,7 @@ La respuesta JSON conserva el orden de insercion de las probabilidades
 """
 from __future__ import annotations
 
+import os
 import time
 from pathlib import Path
 from typing import Any
@@ -47,6 +48,33 @@ def create_app() -> FastAPI:
     app = FastAPI(title="AGORA", version="0.0.1")
     registry: dict[str, Any] = {"mock": MockAdapter()}
     runs: list[dict] = []
+
+    # Backends opcionales por entorno. Sin nube por defecto. LAYA local viene activo salvo
+    # AGORA_LAYAA=0; Eikos y JEV solo si se les da URL.
+    if os.environ.get("AGORA_LAYAA", "1") != "0":
+        try:
+            from agora_adapters import LayaAdapter
+
+            registry["laya"] = LayaAdapter(
+                base_url=os.environ.get("AGORA_LAYAA_URL", "http://127.0.0.1:8787"),
+                api_key=os.environ.get("LAYA_API_KEY") or None,
+            )
+        except Exception:  # noqa: BLE001
+            pass
+    if os.environ.get("AGORA_EIKOS_URL"):
+        try:
+            from agora_adapters import EikosAdapter
+
+            registry["eikos"] = EikosAdapter(base_url=os.environ["AGORA_EIKOS_URL"])
+        except Exception:  # noqa: BLE001
+            pass
+    if os.environ.get("AGORA_JEV_URL"):
+        try:
+            from agora_adapters import JevAdapter
+
+            registry["jev"] = JevAdapter(base_url=os.environ["AGORA_JEV_URL"])
+        except Exception:  # noqa: BLE001
+            pass
 
     def register(name: str, adapter: Any) -> None:
         registry[name] = adapter

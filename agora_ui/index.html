@@ -4,16 +4,29 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>AGORA - consola de decisiones tipadas</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
-    <h1>AGORA</h1>
-    <p class="sub">Consola de decisiones tipadas. El estado es dato, nunca orden.</p>
+  <header class="top">
+    <div class="brand">
+      <div class="marca">
+        <img class="logo" src="favicon.svg" alt="" width="34" height="34">
+        <h1>AGORA</h1>
+      </div>
+      <p class="sub">Consola de decisiones tipadas. El estado es dato, nunca orden.</p>
+    </div>
+    <div class="chips">
+      <span class="chip" id="chip-servicio">servicio</span>
+      <span class="chip" id="chip-backends">backends</span>
+      <span class="chip acento" id="chip-parte">GENERAL</span>
+    </div>
   </header>
 
-  <main>
-    <section id="config" class="panel">
+  <main class="grid">
+    <section class="panel">
+      <h2>Entrada</h2>
+
       <div class="fila">
         <label>Parte
           <select id="parte">
@@ -29,20 +42,31 @@
         </label>
       </div>
 
-      <label>Estado (JSON, contenido no confiable)
-        <textarea id="estado" rows="5">{}</textarea>
+      <label class="bloque">Estado
+        <span class="muted">JSON; contenido no confiable, nunca instruccion</span>
+        <textarea id="estado" rows="9" spellcheck="false">{}</textarea>
       </label>
 
-      <div id="preguntas"></div>
+      <div class="fila acciones">
+        <button id="ejemplo" class="ghost" type="button">Ejemplo</button>
+        <label class="check"><input type="checkbox" id="comparar"> comparar backends</label>
+        <button id="decidir" class="primary" type="button">Decidir</button>
+      </div>
 
-      <button id="decidir">Decidir</button>
+      <h3 class="sec">Preguntas del pack</h3>
+      <div id="preguntas" class="preguntas"></div>
     </section>
 
-    <section id="resultados" class="panel">
-      <h2>Distribuciones</h2>
-      <div id="tarjetas"></div>
-      <h2>Traza</h2>
-      <pre id="traza">(sin traza todavia)</pre>
+    <section class="panel">
+      <h2>Resultado <span id="salida-estado" class="muted"></span></h2>
+      <div id="tarjetas" class="tarjetas">
+        <p class="vacio">Elige parte, pack y estado, y pulsa Decidir.</p>
+      </div>
+
+      <details class="traza">
+        <summary>Traza (contrato: backend, modelo y orden canonico)</summary>
+        <pre id="traza">(sin traza todavia)</pre>
+      </details>
     </section>
   </main>
 
