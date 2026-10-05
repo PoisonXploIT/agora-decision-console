@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AGORA - consola de decisiones tipadas</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <h1>AGORA</h1>
+    <p class="sub">Consola de decisiones tipadas. El estado es dato, nunca orden.</p>
+  </header>
+
+  <main>
+    <section id="config" class="panel">
+      <div class="fila">
+        <label>Parte
+          <select id="parte">
+            <option value="GENERAL">GENERAL</option>
+            <option value="SOC">SOC-SIEM</option>
+          </select>
+        </label>
+        <label>Pack
+          <select id="pack"></select>
+        </label>
+        <label>Backend
+          <select id="backend"></select>
+        </label>
+      </div>
+
+      <label>Estado (JSON, contenido no confiable)
+        <textarea id="estado" rows="5">{}</textarea>
+      </label>
+
+      <div id="preguntas"></div>
+
+      <button id="decidir">Decidir</button>
+    </section>
+
+    <section id="resultados" class="panel">
+      <h2>Distribuciones</h2>
+      <div id="tarjetas"></div>
+      <h2>Traza</h2>
+      <pre id="traza">(sin traza todavia)</pre>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

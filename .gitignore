@@ -1,0 +1,19 @@
+# AGORA - repo
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Datos y runs locales (nunca al repo publico)
+data/
+runs/
+verificar.txt
+*.env
+.env
+
+# Pesos y checkpoints
+checkpoints/
+*.safetensors
+*.gguf

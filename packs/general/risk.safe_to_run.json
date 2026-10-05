@@ -1,0 +1,26 @@
+{
+  "name": "risk.safe_to_run",
+  "title": "Risk gate (safe to run)",
+  "description": "Gate de riesgo antes de ejecutar una accion con efectos: segurar, pedir revision o bloquear.",
+  "part": "GENERAL",
+  "questions": [
+    {
+      "id": "risk.veredicto",
+      "type": "choice",
+      "prompt": "Con el estado dado, esta la accion segura de ejecutar sin mas revision?",
+      "criteria": ["safe_to_run", "needs_review", "block"]
+    },
+    {
+      "id": "risk.nivel",
+      "type": "score",
+      "prompt": "Cual es el nivel de riesgo de la accion sobre el estado dado?",
+      "criteria": ["low", "medium", "high", "critical"]
+    },
+    {
+      "id": "risk.accion",
+      "type": "noul",
+      "prompt": "Que accion inmediata aplica el gate con este riesgo?",
+      "criteria": ["permitir", "pedir_revision_humana", "bloquear_y_auditar"]
+    }
+  ]
+}

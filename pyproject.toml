@@ -1,0 +1,26 @@
+[project]
+name = "agora"
+version = "0.0.1"
+description = "Consola de decisiones tipadas con varios backends (Mock, LAYA, JEV, Eikos)"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2",
+    "fastapi",
+    "uvicorn",
+]
+
+[project.optional-dependencies]
+test = ["pytest", "httpx"]
+
+[project.scripts]
+agora = "agora.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["agora*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
