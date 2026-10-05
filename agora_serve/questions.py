@@ -77,6 +77,11 @@ def _model() -> str:
     return ""
 
 
+def chat_info() -> dict:
+    """Quien genera el JSON: el LLM de chat, no el modelo de decision."""
+    return {"tipo": "LLM de chat (instruct)", "url": _chat_url(), "model": _model()}
+
+
 def _extract_json(text: str) -> dict[str, Any]:
     """Saca el primer objeto JSON del texto (tolera vallas ``` y prosa)."""
     t = text.strip()

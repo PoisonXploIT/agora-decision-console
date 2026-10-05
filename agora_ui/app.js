@@ -190,8 +190,15 @@ async function generarPregunta() {
     });
     $("manual").value = JSON.stringify(d.question, null, 2);
     $("usar-manual").checked = true;
+    if (d.generado_por) {
+      $("gen-info").textContent =
+        `Generado por ${d.generado_por.model} en ${d.generado_por.url} ` +
+        `(${d.generado_por.tipo}). Los modelos de decision (LAYAA / Eikos / JEV) NO hacen esto: ` +
+        `solo clasifican sobre las opciones ya dadas.`;
+    }
   } catch (e) {
     $("manual").value = "error: " + e.message;
+    $("gen-info").textContent = "";
   }
 }
 

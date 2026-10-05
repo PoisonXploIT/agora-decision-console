@@ -218,13 +218,13 @@ def create_app() -> FastAPI:
     @app.post("/v1/questions/from-text")
     def question_from_text(body: FromTextBody) -> dict:
         """Convierte una instruccion en lenguaje natural en una pregunta tipada."""
-        from agora_serve.questions import ChatError, from_text
+        from agora_serve.questions import ChatError, chat_info, from_text
 
         try:
             q = from_text(body.text, default_type=body.type or "choice")
         except ChatError as e:
             raise HTTPException(status_code=502, detail=str(e)) from e
-        return {"question": q.model_dump()}
+        return {"question": q.model_dump(), "generado_por": chat_info()}
 
     @app.post("/v1/decide", response_model=Decision)
     def decide(body: DecisionRequest) -> Decision:
