@@ -55,6 +55,19 @@
         <button id="decidir" class="primary" type="button">Decidir</button>
       </div>
 
+      <h3 class="sec">Pregunta desde texto <span class="muted">(modelo local)</span></h3>
+      <label class="bloque">Instruccion en lenguaje natural
+        <textarea id="nl" rows="2" spellcheck="false"
+          placeholder="ej: clasifica un comando bash en seguro, dudoso o peligroso"></textarea>
+      </label>
+      <div class="fila acciones">
+        <button id="generar" class="ghost" type="button">Generar pregunta</button>
+        <label class="check"><input type="checkbox" id="usar-manual"> usar pregunta manual</label>
+      </div>
+      <label class="bloque">Pregunta (JSON editable)
+        <textarea id="manual" rows="6" spellcheck="false">(vacio)</textarea>
+      </label>
+
       <h3 class="sec">Preguntas del pack</h3>
       <div id="preguntas" class="preguntas"></div>
     </section>
@@ -69,6 +82,32 @@
         <summary>Traza (contrato: backend, modelo y orden canonico)</summary>
         <pre id="traza">(sin traza todavia)</pre>
       </details>
+    </section>
+
+    <section class="panel span2">
+      <h2>Modelos de decision <span class="muted">local o API</span></h2>
+      <div id="lista-backends" class="modelos"></div>
+      <div class="fila" style="margin-top:12px">
+        <label>Nombre
+          <input id="m-nombre" type="text" placeholder="mi-modelo" style="font-family:var(--mono)">
+        </label>
+        <label>Tipo
+          <select id="m-tipo">
+            <option value="http">HTTP TypeSafe (LAYAA local, JEV API, Eikos)</option>
+            <option value="mock">Mock (falso, sin modelo)</option>
+          </select>
+        </label>
+        <label class="grow">URL base
+          <input id="m-url" type="text" placeholder="http://127.0.0.1:8787  o  https://api.typesafe.ai" style="font-family:var(--mono)">
+        </label>
+        <label class="grow">Clave (API, opcional)
+          <input id="m-key" type="password" placeholder="solo vive en memoria" style="font-family:var(--mono)">
+        </label>
+      </div>
+      <div class="fila acciones">
+        <button id="m-add" class="primary" type="button">Anadir modelo</button>
+        <span class="muted" id="m-msg"></span>
+      </div>
     </section>
   </main>
 

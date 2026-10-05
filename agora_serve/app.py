@@ -44,6 +44,21 @@ class CompareBody(BaseModel):
     )
 
 
+class BackendConfig(BaseModel):
+    """Alta de un backend en caliente (local o API). La clave vive solo en memoria."""
+
+    name: str = Field(min_length=1)
+    kind: str = "http"  # mock | http (compatible TypeSafe: LAYA local, JEV API, Eikos serve)
+    base_url: str | None = None
+    api_key: str | None = None
+    model: str | None = None
+
+
+class FromTextBody(BaseModel):
+    text: str = Field(min_length=1, description="instruccion en lenguaje natural")
+    type: str | None = Field(default=None, description="tipo preferido: choice | score | noul")
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="AGORA", version="0.0.1")
     registry: dict[str, Any] = {"mock": MockAdapter()}
@@ -91,6 +106,52 @@ def create_app() -> FastAPI:
         return {
             "backends": [registry[n].info().model_dump() for n in registry]
         }
+
+    @app.post("/backends")
+    def add_backend(cfg: BackendConfig) -> dict:
+        """Registra un backend en caliente. Local o API; la clave no se guarda."""
+        name = cfg.name.strip().lower()
+        kind = (cfg.kind or "http").strip().lower()
+        if kind == "mock":
+            adapter: Any = MockAdapter()
+        elif kind in ("http", "typesafe", "laya", "eikos", "jev"):
+            # Todos hablan la API compatible TypeSafe (/v1/systemone): LAYA local,
+            # JEV cloud o Eikos serve. Distinto base_url y clave.
+            from agora_adapters import LayaAdapter
+
+            adapter = LayaAdapter(
+                base_url=cfg.base_url or "http://127.0.0.1:8787",
+                api_key=cfg.api_key or None,
+                model=cfg.model or None,
+            )
+            adapter.name = name
+        else:
+            raise HTTPException(status_code=422, detail=f"kind desconocido: {kind!r}")
+        registry[name] = adapter
+        info = adapter.info().model_dump()
+        info["name"] = name
+        return {"ok": True, "backend": info, "backends": list(registry)}
+
+    @app.delete("/backends/{name}")
+    def del_backend(name: str) -> dict:
+        name = name.strip().lower()
+        if name == "mock":
+            raise HTTPException(status_code=422, detail="mock no se puede quitar")
+        if name not in registry:
+            raise HTTPException(status_code=404, detail="backend no registrado")
+        registry.pop(name, None)
+        return {"ok": True, "backends": list(registry)}
+
+    @app.post("/v1/questions/from-text")
+    def question_from_text(body: FromTextBody) -> dict:
+        """Convierte una instruccion en lenguaje natural en una pregunta tipada."""
+        from agora_serve.questions import ChatError, from_text
+
+        try:
+            q = from_text(body.text, default_type=body.type or "choice")
+        except ChatError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+        return {"question": q.model_dump()}
 
     @app.post("/v1/decide", response_model=Decision)
     def decide(body: DecisionRequest) -> Decision:

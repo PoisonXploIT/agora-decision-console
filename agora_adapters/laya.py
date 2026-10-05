@@ -61,6 +61,7 @@ class LayaAdapter(BackendAdapter):
         self.model = model
         host = self.base_url.split("//")[-1].split(":")[0]
         self.local = host in ("127.0.0.1", "localhost", "::1")
+        self.privacy = "local" if self.local else "cloud"
         self.name = "laya"
 
     def capabilities(self) -> list[QuestionType]:

@@ -48,7 +48,67 @@ async function cargarBackends() {
   $("backend").innerHTML = BACKENDS
     .map((b) => `<option value="${esc(b.name)}">${esc(b.name)} (${esc(b.privacy)})</option>`)
     .join("");
+  renderModelos();
   chip("chip-backends", `${BACKENDS.length} backends`, BACKENDS.length ? "ok" : "err");
+}
+
+function renderModelos() {
+  const cont = $("lista-backends");
+  if (!BACKENDS.length) {
+    cont.innerHTML = '<p class="muted">(sin backends)</p>';
+    return;
+  }
+  cont.innerHTML = BACKENDS.map(
+    (b) => `
+    <div class="modelo">
+      <span class="nom">${esc(b.name)}</span>
+      <span class="badge ${b.privacy === "cloud" ? "cloud" : "local"}">${esc(b.privacy)}</span>
+      <span class="badge">${esc(b.kind)}</span>
+      <span class="url">${esc(b.base_url || "(sin URL)")}</span>
+      ${b.name === "mock" ? '<span class="muted">fijo</span>' : `<button class="quitar" data-quitar="${esc(b.name)}" type="button">quitar</button>`}
+    </div>`
+  ).join("");
+  cont.querySelectorAll("[data-quitar]").forEach((btn) => {
+    btn.addEventListener("click", () => delModelo(btn.getAttribute("data-quitar")));
+  });
+}
+
+async function addModelo() {
+  const nombre = $("m-nombre").value.trim();
+  if (!nombre) {
+    $("m-msg").textContent = "pon un nombre";
+    return;
+  }
+  const body = {
+    name: nombre,
+    kind: $("m-tipo").value,
+    base_url: $("m-url").value.trim() || null,
+    api_key: $("m-key").value.trim() || null,
+  };
+  $("m-msg").textContent = "anadiendo...";
+  try {
+    await jsonFetch("/backends", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    $("m-nombre").value = "";
+    $("m-url").value = "";
+    $("m-key").value = "";
+    $("m-msg").textContent = "anadido";
+    await cargarBackends();
+  } catch (e) {
+    $("m-msg").textContent = "error: " + e.message;
+  }
+}
+
+async function delModelo(name) {
+  try {
+    await jsonFetch("/backends/" + encodeURIComponent(name), { method: "DELETE" });
+    await cargarBackends();
+  } catch (e) {
+    $("m-msg").textContent = "error: " + e.message;
+  }
 }
 
 async function cargarPacks() {
@@ -83,6 +143,28 @@ function renderPreguntas(pack) {
     </div>`
     )
     .join("");
+}
+
+/* ---------------------------------------------------- pregunta desde texto */
+
+async function generarPregunta() {
+  const texto = $("nl").value.trim();
+  if (!texto) {
+    $("manual").value = "escribe una instruccion arriba";
+    return;
+  }
+  $("manual").value = "generando con el modelo local...";
+  try {
+    const d = await jsonFetch("/v1/questions/from-text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: texto }),
+    });
+    $("manual").value = JSON.stringify(d.question, null, 2);
+    $("usar-manual").checked = true;
+  } catch (e) {
+    $("manual").value = "error: " + e.message;
+  }
 }
 
 /* ------------------------------------------------------------ render */
@@ -137,7 +219,7 @@ function compColumna(nombre, decision, error) {
 }
 
 function comparacion(pregunta, entradas) {
-  const ganadores = entradas.filter((e) => e.decision).map((e) => e.decision.probabilities && argmaxDe(e.decision.probabilities));
+  const ganadores = entradas.filter((e) => e.decision).map((e) => argmaxDe(e.decision.probabilities));
   const acuerdo = new Set(ganadores).size === 1 && ganadores.length > 1;
   return `
   <div class="cmp">
@@ -155,6 +237,15 @@ function argmaxDe(probs) {
 
 /* ------------------------------------------------------------ decidir */
 
+function preguntasActivas() {
+  if ($("usar-manual").checked) {
+    const q = JSON.parse($("manual").value);
+    return [q];
+  }
+  const pack = packActual();
+  return pack ? pack.questions || [] : [];
+}
+
 async function decidir() {
   const salida = $("salida-estado");
   salida.textContent = "";
@@ -167,11 +258,20 @@ async function decidir() {
     salida.className = "err";
     return;
   }
-  const pack = packActual();
-  if (!pack) return;
+  let preguntas;
+  try {
+    preguntas = preguntasActivas();
+  } catch (e) {
+    $("tarjetas").innerHTML = `<p class="err">pregunta manual no es JSON valido: ${esc(e.message)}</p>`;
+    return;
+  }
+  if (!preguntas.length) {
+    $("tarjetas").innerHTML = '<p class="vacio">sin preguntas que decidir</p>';
+    return;
+  }
+
   const comparar = $("comparar").checked;
   const backend = $("backend").value;
-
   $("tarjetas").innerHTML = '<p class="vacio">Pensando...</p>';
   salida.textContent = comparar ? "comparando backends" : "consultando " + backend;
   salida.className = "muted";
@@ -179,7 +279,7 @@ async function decidir() {
   try {
     const bloques = [];
     let ultimaTraza = null;
-    for (const q of pack.questions) {
+    for (const q of preguntas) {
       if (comparar) {
         const entradas = [];
         for (const b of BACKENDS) {
@@ -240,11 +340,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("pack").addEventListener("change", () => renderPreguntas(packActual()));
   $("ejemplo").addEventListener("click", () => {
     const pack = packActual();
-    if (pack && MUESTRAS[pack.name]) {
-      $("estado").value = MUESTRAS[pack.name];
-    } else {
-      $("estado").value = '{\n  "ejemplo": "no hay muestra para este pack"\n}';
-    }
+    $("estado").value = pack && MUESTRAS[pack.name]
+      ? MUESTRAS[pack.name]
+      : '{\n  "ejemplo": "no hay muestra para este pack"\n}';
   });
+  $("generar").addEventListener("click", generarPregunta);
+  $("m-add").addEventListener("click", addModelo);
   $("decidir").addEventListener("click", decidir);
 });
