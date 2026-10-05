@@ -82,6 +82,49 @@ async function cargarCatalogo() {
     CATALOG.map((c, i) => `<option value="${i}">${esc(c.label)}</option>`).join("") +
     '<option value="-1">personalizado...</option>';
   aplicarPreset();
+  renderServidores();
+}
+
+function renderServidores() {
+  const cont = $("servidores");
+  cont.innerHTML = CATALOG.map((c) => {
+    const estado = c.up === true ? "arriba" : c.up === false ? "parado" : "sin probe";
+    const cls = c.up === true ? "local" : c.up === false ? "cloud" : "";
+    const botones = c.configurado
+      ? `<button class="ghost" data-start="${esc(c.name)}" type="button">Levantar</button>` +
+        `<button class="quitar" data-stop="${esc(c.name)}" type="button">Detener</button>`
+      : '<span class="muted">(sin lanzador)</span>';
+    return `<div class="modelo"><span class="nom">${esc(c.label)}</span>` +
+           `<span class="badge ${cls}">${esc(estado)}</span>${botones}</div>`;
+  }).join("");
+  cont.querySelectorAll("[data-start]").forEach((b) =>
+    b.addEventListener("click", () => arrancarModelo(b.getAttribute("data-start")))
+  );
+  cont.querySelectorAll("[data-stop]").forEach((b) =>
+    b.addEventListener("click", () => pararModelo(b.getAttribute("data-stop")))
+  );
+}
+
+async function arrancarModelo(name) {
+  $("m-msg").textContent = `levantando ${name}...`;
+  try {
+    const d = await jsonFetch(`/models/${encodeURIComponent(name)}/start`, { method: "POST" });
+    $("m-msg").textContent = `${name}: ${d.msg || "lanzado"}`;
+  } catch (e) {
+    $("m-msg").textContent = "error: " + e.message;
+  }
+  setTimeout(cargarCatalogo, 6000);
+}
+
+async function pararModelo(name) {
+  $("m-msg").textContent = `parando ${name}...`;
+  try {
+    const d = await jsonFetch(`/models/${encodeURIComponent(name)}/stop`, { method: "POST" });
+    $("m-msg").textContent = `${name}: parados ${JSON.stringify(d.parados || [])}`;
+  } catch (e) {
+    $("m-msg").textContent = "error: " + e.message;
+  }
+  setTimeout(cargarCatalogo, 3000);
 }
 
 function aplicarPreset() {
@@ -111,6 +154,7 @@ async function addModelo() {
     kind,
     base_url: kind === "mock" ? null : $("m-url").value.trim() || null,
     api_key: $("m-key").value.trim() || null,
+    model: preset && preset.model ? preset.model : null,
   };
   if (preset && preset.needs_key && !body.api_key) {
     $("m-msg").textContent = "esta API necesita clave";

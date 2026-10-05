@@ -82,6 +82,7 @@ CATALOG = [
         "label": "JEV / TypeSafe (cloud, API)",
         "kind": "http",
         "base_url": "https://api.typesafe.ai",
+        "model": "jev-1.13.0",
         "needs_key": True,
         "privacy": "cloud",
     },
@@ -161,7 +162,31 @@ def create_app() -> FastAPI:
 
     @app.get("/catalog")
     def catalog() -> dict:
-        return {"catalog": CATALOG}
+        from agora_serve import models as m
+
+        out = []
+        for c in CATALOG:
+            st = m.status(c["name"])
+            out.append({**c, **{k: st[k] for k in ("configurado", "starter", "probe", "up")}})
+        return {"catalog": out}
+
+    @app.post("/models/{name}/start")
+    def model_start(name: str) -> dict:
+        from agora_serve import models as m
+
+        try:
+            return {"ok": True, **m.start(name.strip().lower())}
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=str(e)) from e
+
+    @app.post("/models/{name}/stop")
+    def model_stop(name: str) -> dict:
+        from agora_serve import models as m
+
+        try:
+            return {"ok": True, **m.stop(name.strip().lower())}
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=str(e)) from e
 
     @app.get("/backends")
     def backends() -> dict:

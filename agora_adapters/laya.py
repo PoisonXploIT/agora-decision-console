@@ -117,10 +117,14 @@ class LayaAdapter(BackendAdapter):
 
     def decide(self, request: DecisionRequest) -> Decision:
         q = request.question
-        payload = json.dumps(
-            {"state": request.state, "questions": {q.id: self._question_payload(q)}},
-            ensure_ascii=False,
-        )
+        payload_obj: dict = {
+            "state": request.state,
+            "questions": {q.id: self._question_payload(q)},
+        }
+        if self.model:
+            # La API cloud (TypeSafe/JEV) exige 'model'; laya-serve lo ignora.
+            payload_obj["model"] = self.model
+        payload = json.dumps(payload_obj, ensure_ascii=False)
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = "Bearer " + self.api_key
@@ -141,7 +145,7 @@ class LayaAdapter(BackendAdapter):
                 detail = e.read().decode("utf-8", "replace")[:200]
             except Exception:
                 pass
-            raise AdapterError(f"LAYAA respondio HTTP {e.code}: {detail}") from e
+            raise AdapterError(f"{self.name} respondio HTTP {e.code}: {detail}") from e
         except (urllib.error.URLError, TimeoutError, OSError) as e:
             raise AdapterError(f"no se pudo hablar con LAYA en {self.base_url}: {e}") from e
         latency_ms = (time.monotonic() - t0) * 1000.0
@@ -152,7 +156,7 @@ class LayaAdapter(BackendAdapter):
             raise AdapterError(f"respuesta no-JSON de LAYA: {body[:200]!r}") from e
         answers = data.get("answers") if isinstance(data, dict) else None
         if not isinstance(answers, dict) or q.id not in answers:
-            raise AdapterError(f"respuesta sin 'answers[{q.id}]': {body[:200]!r}")
+            raise AdapterError(f"{self.name}: respuesta sin 'answers[{q.id}]': {body[:200]!r}")
 
         probs = self._probs(q, answers[q.id] or {})
         model = str(data.get("model") or self.model or "laya")
