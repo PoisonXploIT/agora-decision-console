@@ -82,7 +82,12 @@ def start(name: str) -> dict[str, Any]:
         raise RuntimeError(f"el lanzador no existe: {starter}")
     if _probe(cfg.get("probe")):
         return {"name": name, "lanzado": False, "msg": "ya estaba levantado", "up": True}
-    subprocess.Popen(["cmd", "/c", starter], creationflags=CREATE_NEW_CONSOLE)
+    # os.startfile abre el .bat en su propia consola como proceso INDEPENDIENTE (como doble clic):
+    # asi el servidor del modelo NO muere cuando se reinicia el servicio de AGORA.
+    try:
+        os.startfile(starter)  # type: ignore[attr-defined]  (solo Windows)
+    except Exception:  # noqa: BLE001
+        subprocess.Popen(["cmd", "/c", starter], creationflags=CREATE_NEW_CONSOLE)
     return {"name": name, "lanzado": True, "starter": starter, "msg": "ventana abierta; mira los logs"}
 
 
