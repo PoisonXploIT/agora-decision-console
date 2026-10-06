@@ -59,6 +59,14 @@ class FromTextBody(BaseModel):
     type: str | None = Field(default=None, description="tipo preferido: choice | score | noul")
 
 
+class ReportBody(BaseModel):
+    title: str | None = None
+    state: Any = None
+    pack: str | None = Field(default=None, description="nombre del pack a evaluar")
+    questions: list[Any] | None = Field(default=None, description="preguntas sueltas")
+    backends: list[str] | None = None
+
+
 # Catalogo de modelos conocidos: local (sin clave) o API cloud (con clave).
 CATALOG = [
     {
@@ -91,6 +99,15 @@ CATALOG = [
         "label": "Mock (falso, sin modelo)",
         "kind": "mock",
         "base_url": None,
+        "needs_key": False,
+        "privacy": "local",
+    },
+    {
+        # No es un modelo de decision: es el LLM de chat que traduce lenguaje natural a JSON.
+        "name": "chat",
+        "label": "LLM de chat :8099 (genera el JSON desde texto)",
+        "kind": "chat",
+        "base_url": "http://127.0.0.1:8099",
         "needs_key": False,
         "privacy": "local",
     },
@@ -250,6 +267,82 @@ def create_app() -> FastAPI:
         except ChatError as e:
             raise HTTPException(status_code=502, detail=str(e)) from e
         return {"question": q.model_dump(), "generado_por": chat_info()}
+
+    @app.post("/v1/report")
+    def report(body: ReportBody):
+        """Informe PDF de un pack (o preguntas sueltas) sobre varios backends."""
+        from datetime import datetime
+
+        from fastapi.responses import Response
+
+        from agora_serve.report import build_pdf
+
+        qs: list[Question] = []
+        if body.questions:
+            qs = [Question.model_validate(x) for x in body.questions]
+        elif body.pack:
+            from agora_serve.packs import list_packs
+
+            p = next((x for x in list_packs() if x.name == body.pack), None)
+            if p is None:
+                raise HTTPException(status_code=404, detail=f"pack desconocido: {body.pack!r}")
+            qs = [
+                Question(id=q.id, type=q.type, prompt=q.prompt, criteria=q.criteria)
+                for q in p.questions
+            ]
+        if not qs:
+            raise HTTPException(status_code=422, detail="hace falta 'pack' o 'questions'")
+
+        names = [n.lower() for n in body.backends] if body.backends else list(registry)
+        names = [n for n in names if n in registry]
+        if not names:
+            raise HTTPException(status_code=422, detail="sin backends validos")
+
+        state = body.state if body.state is not None else {}
+        results = []
+        for q in qs:
+            by = []
+            for n in names:
+                req = DecisionRequest(state=state, question=q, backend=n)
+                try:
+                    d = registry[n].decide(req)
+                    by.append({
+                        "backend": n,
+                        "model": d.trace.model,
+                        "latency_ms": d.trace.latency_ms,
+                        "probabilities": dict(d.probabilities),
+                        "expected": d.expected,
+                        "action": d.action,
+                    })
+                except Exception as e:  # noqa: BLE001
+                    by.append({"backend": n, "error": str(e), "probabilities": {}})
+            results.append({
+                "question_id": q.id,
+                "prompt": q.prompt,
+                "type": q.type.value,
+                "by_backend": by,
+            })
+
+        estado_txt = ""
+        try:
+            estado_txt = json.dumps(state, ensure_ascii=False)
+        except Exception:
+            estado_txt = str(state)
+        if len(estado_txt) > 90:
+            estado_txt = estado_txt[:87] + "..."
+
+        pdf = build_pdf(
+            title=body.title or "Informe de decisiones",
+            generated_at=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            results=results,
+            backends=names,
+            state_label=estado_txt,
+        )
+        return Response(
+            content=pdf,
+            media_type="application/pdf",
+            headers={"Content-Disposition": 'inline; filename="agora-informe.pdf"'},
+        )
 
     @app.post("/v1/decide", response_model=Decision)
     def decide(body: DecisionRequest) -> Decision:

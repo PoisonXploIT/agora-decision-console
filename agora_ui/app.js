@@ -78,9 +78,10 @@ let CATALOG = [];
 async function cargarCatalogo() {
   const d = await jsonFetch("/catalog");
   CATALOG = d.catalog || [];
+  const presets = CATALOG.filter((c) => c.kind !== "chat");
   $("m-preset").innerHTML =
-    CATALOG.map((c, i) => `<option value="${i}">${esc(c.label)}</option>`).join("") +
-    '<option value="-1">personalizado...</option>';
+    presets.map((c) => `<option value="${esc(c.name)}">${esc(c.label)}</option>`).join("") +
+    '<option value="">personalizado...</option>';
   aplicarPreset();
   renderServidores();
 }
@@ -128,12 +129,11 @@ async function pararModelo(name) {
 }
 
 function aplicarPreset() {
-  const i = parseInt($("m-preset").value, 10);
-  if (i < 0) {
+  const c = CATALOG.find((x) => x.name === $("m-preset").value);
+  if (!c) {
     $("m-key-label").style.display = "";
     return;
   }
-  const c = CATALOG[i];
   $("m-nombre").value = c.name;
   $("m-url").value = c.base_url || "";
   $("m-key-label").style.display = c.needs_key ? "" : "none";
@@ -146,8 +146,7 @@ async function addModelo() {
     $("m-msg").textContent = "pon un nombre";
     return;
   }
-  const i = parseInt($("m-preset").value, 10);
-  const preset = i >= 0 ? CATALOG[i] : null;
+  const preset = CATALOG.find((x) => x.name === $("m-preset").value) || null;
   const kind = preset ? preset.kind : "http";
   const body = {
     name: nombre,
@@ -395,6 +394,68 @@ async function decidir() {
   }
 }
 
+/* ------------------------------------------------------------ informe pdf */
+
+async function informePdf() {
+  const salida = $("salida-estado");
+  let estado;
+  try {
+    estado = JSON.parse($("estado").value || "{}");
+  } catch (e) {
+    salida.textContent = "estado no es JSON valido";
+    salida.className = "err";
+    return;
+  }
+  const nombres = BACKENDS.map((b) => b.name);
+  let body;
+  if ($("usar-manual").checked) {
+    let q;
+    try {
+      q = JSON.parse($("manual").value);
+    } catch (e) {
+      salida.textContent = "pregunta manual no es JSON valido";
+      salida.className = "err";
+      return;
+    }
+    body = { title: "Informe de decision", state: estado, questions: [q], backends: nombres };
+  } else {
+    const pack = packActual();
+    if (!pack) {
+      salida.textContent = "sin pack seleccionado";
+      return;
+    }
+    body = {
+      title: "Informe: " + (pack.title || pack.name),
+      state: estado,
+      pack: pack.name,
+      backends: nombres,
+    };
+  }
+  salida.textContent = "generando informe...";
+  salida.className = "muted";
+  try {
+    const r = await fetch(API + "/v1/report", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "agora-informe.pdf";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    salida.textContent = "informe descargado";
+  } catch (e) {
+    salida.textContent = "error: " + e.message;
+    salida.className = "err";
+  }
+}
+
 /* ------------------------------------------------------------- inicio */
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -427,6 +488,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       : '{\n  "ejemplo": "no hay muestra para este pack"\n}';
   });
   $("generar").addEventListener("click", generarPregunta);
+  $("informe").addEventListener("click", informePdf);
   $("m-add").addEventListener("click", addModelo);
   $("decidir").addEventListener("click", decidir);
 });

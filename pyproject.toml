@@ -7,6 +7,7 @@ dependencies = [
     "pydantic>=2",
     "fastapi",
     "uvicorn",
+    "reportlab",
 ]
 
 [project.optional-dependencies]

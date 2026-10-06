@@ -39,6 +39,7 @@ from .base import (
     AdapterError,
     BackendAdapter,
     argmax,
+    normalize_probabilities,
 )
 
 
@@ -78,12 +79,12 @@ class LayaAdapter(BackendAdapter):
             return {"type": "choice", "instructions": q.prompt, "criteria": criteria}
         if q.type is QuestionType.SCORE:
             return {"type": "score", "instructions": q.prompt, "criteria": list(q.criteria)}
-        # noul: dos criterios (si/no). El resto no es representable.
+        # noul: la API exige las claves 'true'/'false' (sus valores son el texto que lee el modelo).
         if len(q.criteria) == 2:
             return {
                 "type": "noul",
                 "instructions": q.prompt,
-                "criteria": {q.criteria[0]: q.criteria[0], q.criteria[1]: q.criteria[1]},
+                "criteria": {"true": q.criteria[0], "false": q.criteria[1]},
             }
         return {"type": "noul", "instructions": q.prompt}
 
@@ -158,9 +159,9 @@ class LayaAdapter(BackendAdapter):
         if not isinstance(answers, dict) or q.id not in answers:
             raise AdapterError(f"{self.name}: respuesta sin 'answers[{q.id}]': {body[:200]!r}")
 
-        probs = self._probs(q, answers[q.id] or {})
+        probs = normalize_probabilities(q, self._probs(q, answers[q.id] or {}))
         model = str(data.get("model") or self.model or "laya")
-        decision = self._finish(request, dict(zip(q.criteria, probs)), model=model,
+        decision = self._finish(request, probs, model=model,
                                 latency_ms=latency_ms, raw=body[:4000])
         return decision
 
