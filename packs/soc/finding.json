@@ -8,19 +8,32 @@
       "id": "finding.clase",
       "type": "choice",
       "prompt": "Con el estado dado (alerta SIEM), como se clasifica este finding?",
-      "criteria": ["true_positive", "false_positive", "noise"]
+      "criteria": [
+        "true_positive",
+        "false_positive",
+        "noise"
+      ]
     },
     {
       "id": "finding.confianza",
       "type": "score",
       "prompt": "Cual es el nivel de confianza en esa clasificacion del finding?",
-      "criteria": ["baja", "media", "alta", "muy_alta"]
+      "criteria": [
+        "baja",
+        "media",
+        "alta",
+        "muy_alta"
+      ]
     },
     {
       "id": "finding.accion",
-      "type": "noul",
+      "type": "choice",
       "prompt": "Que accion inmediata toma el SOC con este finding?",
-      "criteria": ["cerrar", "monitorizar", "escalar"]
+      "criteria": [
+        "cerrar",
+        "monitorizar",
+        "escalar"
+      ]
     }
   ]
 }

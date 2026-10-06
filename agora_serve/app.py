@@ -205,6 +205,12 @@ def create_app() -> FastAPI:
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=502, detail=str(e)) from e
 
+    @app.get("/models/{name}/log")
+    def model_log(name: str, lines: int = 40) -> dict:
+        from agora_serve import models as m
+
+        return m.tail(name.strip().lower(), max(1, min(500, lines)))
+
     @app.get("/backends")
     def backends() -> dict:
         return {
@@ -447,6 +453,13 @@ def create_app() -> FastAPI:
             StaticFiles(directory=str(ui_dir), html=True),
             name="ui",
         )
+
+    # Supervisor: relanza solo los modelos locales marcados 'autostart' (p. ej. LAYA) si se caen.
+    import threading
+
+    from agora_serve import models as _models
+
+    threading.Thread(target=_models.supervisor_loop, args=(30.0,), daemon=True).start()
 
     return app
 

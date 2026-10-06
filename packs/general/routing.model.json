@@ -8,19 +8,32 @@
       "id": "routing.destino",
       "type": "choice",
       "prompt": "Con el estado dado, cual es el destino de modelo mas economico que cumple la tarea (local primero, nube solo si hace falta)?",
-      "criteria": ["local_4b", "local_14b", "cloud_jev"]
+      "criteria": [
+        "local_4b",
+        "local_14b",
+        "cloud_jev"
+      ]
     },
     {
       "id": "routing.confianza",
       "type": "score",
       "prompt": "Cuantas dudas razonables hay sobre ese destino de routing?",
-      "criteria": ["muy_baja_duda", "baja_duda", "alta_duda", "duda_critica"]
+      "criteria": [
+        "muy_baja_duda",
+        "baja_duda",
+        "alta_duda",
+        "duda_critica"
+      ]
     },
     {
       "id": "routing.accion",
-      "type": "noul",
+      "type": "choice",
       "prompt": "Que accion inmediata toma el router con esta tarea?",
-      "criteria": ["rutar_y_avanzar", "pedir_mas_contexto", "escalar_a_humano"]
+      "criteria": [
+        "rutar_y_avanzar",
+        "pedir_mas_contexto",
+        "escalar_a_humano"
+      ]
     }
   ]
 }

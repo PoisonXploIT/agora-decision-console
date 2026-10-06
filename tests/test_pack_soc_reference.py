@@ -40,7 +40,7 @@ def test_netwatch_criterios_exactos():
     assert q["netwatch.clase"].type.value == "choice"
     assert len(q["netwatch.severidad"].criteria) == 4
     assert q["netwatch.severidad"].type.value == "score"
-    assert q["netwatch.accion"].type.value == "noul"
+    assert q["netwatch.accion"].type.value == "choice"  # 4 opciones -> choice (noul es si/no)
 
 
 def test_finding_criterios_exactos():
@@ -53,7 +53,7 @@ def test_finding_criterios_exactos():
         "noise",
     ]
     assert len(q["finding.confianza"].criteria) == 4
-    assert q["finding.accion"].type.value == "noul"
+    assert q["finding.accion"].type.value == "choice"  # 3 opciones -> choice (noul es si/no)
 
 
 @pytest.mark.parametrize("qid", ["netwatch.clase", "netwatch.severidad", "netwatch.accion",

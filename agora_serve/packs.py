@@ -91,6 +91,12 @@ def validate_pack_file(path: str | Path) -> tuple[bool, list[str]]:
                 f"pregunta {q.id!r}: el orden de criteria no se conserva "
                 f"(fichero {written!r}, validado {list(q.criteria)!r})"
             )
+        # 'noul' es SI/NO: exactamente dos criterios (si no, usar 'choice').
+        if str(q.type.value if hasattr(q.type, "value") else q.type) == "noul" and len(q.criteria) != 2:
+            report.append(
+                f"pregunta {q.id!r}: 'noul' debe ser si/no (2 criterios), tiene {len(q.criteria)}; "
+                f"para varias opciones usa 'choice'"
+            )
 
     return (not report), report
 

@@ -21,11 +21,18 @@ import json
 import os
 import re
 import subprocess
+import time
 import urllib.request
 from pathlib import Path
 from typing import Any
 
 CREATE_NEW_CONSOLE = 0x00000010
+
+# Modelos que el usuario ha parado a proposito: el supervisor no los relanza.
+_PAUSED: set[str] = set()
+# Ultimo intento de arranque por modelo, para no relanzar mientras esta cargando.
+_LAST_START: dict[str, float] = {}
+REINTENTO_MIN_S = 180.0
 
 
 def _dir() -> Path:
@@ -80,19 +87,25 @@ def start(name: str) -> dict[str, Any]:
         raise RuntimeError(f"sin lanzador configurado para {name!r} (models.json)")
     if not Path(starter).exists():
         raise RuntimeError(f"el lanzador no existe: {starter}")
+    _PAUSED.discard(name)
     if _probe(cfg.get("probe")):
         return {"name": name, "lanzado": False, "msg": "ya estaba levantado", "up": True}
-    # os.startfile abre el .bat en su propia consola como proceso INDEPENDIENTE (como doble clic):
-    # asi el servidor del modelo NO muere cuando se reinicia el servicio de AGORA.
+    _lanzar(starter)
+    _LAST_START[name] = time.time()
+    return {"name": name, "lanzado": True, "starter": starter, "msg": "ventana abierta; mira los logs"}
+
+
+def _lanzar(starter: str) -> None:
+    """Abre el .bat en su propia consola como proceso INDEPENDIENTE (como doble clic)."""
     try:
         os.startfile(starter)  # type: ignore[attr-defined]  (solo Windows)
     except Exception:  # noqa: BLE001
         subprocess.Popen(["cmd", "/c", starter], creationflags=CREATE_NEW_CONSOLE)
-    return {"name": name, "lanzado": True, "starter": starter, "msg": "ventana abierta; mira los logs"}
 
 
 def stop(name: str) -> dict[str, Any]:
     cfg = local_models().get(name) or {}
+    _PAUSED.add(name)  # que el supervisor no lo relance
     port = _port(cfg.get("probe") or "")
     if not port:
         raise RuntimeError(f"sin puerto conocido para {name!r} (models.json: probe)")
@@ -112,3 +125,58 @@ def stop(name: str) -> dict[str, Any]:
         subprocess.run(["taskkill", "/F", "/T", "/PID", pid], capture_output=True, text=True)
         parados.append(pid)
     return {"name": name, "puerto": port, "parados": parados}
+
+
+# ------------------------------------------------------------------ supervisor
+
+def _sup_log(msg: str) -> None:
+    try:
+        f = _dir() / "supervisor.log"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        with open(f, "a", encoding="utf-8") as fh:
+            fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}\n")
+    except Exception:
+        pass
+
+
+def supervisor_tick() -> list[str]:
+    """Relanza los modelos marcados 'autostart' que esten caidos (salvo parada manual)."""
+    relanzados = []
+    for name, cfg in local_models().items():
+        if not cfg.get("autostart") or name in _PAUSED:
+            continue
+        starter, probe = cfg.get("starter"), cfg.get("probe")
+        if not starter or not probe or not Path(starter).exists():
+            continue
+        if _probe(probe):
+            continue
+        # No relanzar si acaba de intentarlo (el modelo tarda en cargar y la sonda aun falla).
+        if time.time() - _LAST_START.get(name, 0) < REINTENTO_MIN_S:
+            continue
+        _sup_log(f"autostart: {name} estaba caido; lo relanzo")
+        _lanzar(starter)
+        _LAST_START[name] = time.time()
+        relanzados.append(name)
+    return relanzados
+
+
+def supervisor_loop(interval: float = 30.0) -> None:
+    while True:
+        try:
+            supervisor_tick()
+        except Exception:  # noqa: BLE001
+            pass
+        time.sleep(interval)
+
+
+def tail(name: str, lines: int = 40) -> dict[str, Any]:
+    """Ultimas lineas del log del modelo (si esta configurado)."""
+    cfg = local_models().get(name) or {}
+    log = cfg.get("log")
+    if not log or not Path(log).exists():
+        return {"name": name, "log": None, "lineas": []}
+    try:
+        contenido = Path(log).read_text(encoding="utf-8", errors="replace").splitlines()
+    except Exception as e:  # noqa: BLE001
+        return {"name": name, "log": log, "lineas": [f"(no se pudo leer: {e})"]}
+    return {"name": name, "log": log, "lineas": contenido[-lines:]}

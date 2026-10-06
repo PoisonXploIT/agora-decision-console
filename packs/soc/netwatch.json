@@ -8,19 +8,34 @@
       "id": "netwatch.clase",
       "type": "choice",
       "prompt": "Con el estado dado (flujo netwatch), que clase de actividad es este trafico?",
-      "criteria": ["expected_ai_use", "background_exfil_suspect", "telemetry_noise", "unrelated"]
+      "criteria": [
+        "expected_ai_use",
+        "background_exfil_suspect",
+        "telemetry_noise",
+        "unrelated"
+      ]
     },
     {
       "id": "netwatch.severidad",
       "type": "score",
       "prompt": "Cual es la severidad del hallazgo de red sobre el estado dado?",
-      "criteria": ["info", "medium", "high", "critical"]
+      "criteria": [
+        "info",
+        "medium",
+        "high",
+        "critical"
+      ]
     },
     {
       "id": "netwatch.accion",
-      "type": "noul",
+      "type": "choice",
       "prompt": "Que accion inmediata toma el analista con este trafico?",
-      "criteria": ["ignorar", "monitorizar", "investigar", "bloquear"]
+      "criteria": [
+        "ignorar",
+        "monitorizar",
+        "investigar",
+        "bloquear"
+      ]
     }
   ]
 }
