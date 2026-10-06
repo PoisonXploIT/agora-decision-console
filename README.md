@@ -125,3 +125,9 @@ redistribuye su codigo ni sus pesos):
 ## Licencia
 
 Apache 2.0 (ver `LICENSE`).
+
+## Contacto
+
+- Web: [sammideblas.com](https://sammideblas.com)
+- Correo: analista@sammideblas.com
+- Autor: Sammi De Blas
