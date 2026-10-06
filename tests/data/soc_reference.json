@@ -1,0 +1,160 @@
+{
+  "netwatch.clase": {
+    "question_id": "netwatch.clase",
+    "type": "choice",
+    "probabilities": {
+      "expected_ai_use": 0.0013869248661527035,
+      "background_exfil_suspect": 0.9250547915110289,
+      "telemetry_noise": 0.018220165401770887,
+      "unrelated": 0.05533811822104744
+    },
+    "expected": null,
+    "action": null,
+    "text": null,
+    "trace": {
+      "backend": "mock",
+      "model": "mock-1",
+      "privacy": "local",
+      "latency_ms": 0.0,
+      "criteria_order": [
+        "expected_ai_use",
+        "background_exfil_suspect",
+        "telemetry_noise",
+        "unrelated"
+      ],
+      "raw": "{\"question\": {\"id\": \"netwatch.clase\", \"type\": \"choice\", \"prompt\": \"Con el estado dado (flujo netwatch), que clase de actividad es este trafico?\", \"criteria\": [\"expected_ai_use\", \"background_exfil_susp",
+      "created_at": "2026-10-06T18:07:54.729+00:00"
+    }
+  },
+  "netwatch.severidad": {
+    "question_id": "netwatch.severidad",
+    "type": "score",
+    "probabilities": {
+      "info": 0.056976380175053146,
+      "medium": 0.4118070024989403,
+      "high": 0.03893457989484212,
+      "critical": 0.4922820374311644
+    },
+    "expected": 2.966522,
+    "action": null,
+    "text": null,
+    "trace": {
+      "backend": "mock",
+      "model": "mock-1",
+      "privacy": "local",
+      "latency_ms": 0.0,
+      "criteria_order": [
+        "info",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "raw": "{\"question\": {\"id\": \"netwatch.severidad\", \"type\": \"score\", \"prompt\": \"Cual es la severidad del hallazgo de red sobre el estado dado?\", \"criteria\": [\"info\", \"medium\", \"high\", \"critical\"]}, \"state\": {\"r",
+      "created_at": "2026-10-06T18:07:54.729+00:00"
+    }
+  },
+  "netwatch.accion": {
+    "question_id": "netwatch.accion",
+    "type": "choice",
+    "probabilities": {
+      "ignorar": 0.20339403940412354,
+      "monitorizar": 0.7943635105954159,
+      "investigar": 0.0010001441887814487,
+      "bloquear": 0.0012423058116790302
+    },
+    "expected": null,
+    "action": null,
+    "text": null,
+    "trace": {
+      "backend": "mock",
+      "model": "mock-1",
+      "privacy": "local",
+      "latency_ms": 0.0,
+      "criteria_order": [
+        "ignorar",
+        "monitorizar",
+        "investigar",
+        "bloquear"
+      ],
+      "raw": "{\"question\": {\"id\": \"netwatch.accion\", \"type\": \"choice\", \"prompt\": \"Que accion inmediata toma el analista con este trafico?\", \"criteria\": [\"ignorar\", \"monitorizar\", \"investigar\", \"bloquear\"]}, \"state\"",
+      "created_at": "2026-10-06T18:07:54.729+00:00"
+    }
+  },
+  "finding.clase": {
+    "question_id": "finding.clase",
+    "type": "choice",
+    "probabilities": {
+      "true_positive": 0.0008786456863775198,
+      "false_positive": 0.09066990104404427,
+      "noise": 0.9084514532695782
+    },
+    "expected": null,
+    "action": null,
+    "text": null,
+    "trace": {
+      "backend": "mock",
+      "model": "mock-1",
+      "privacy": "local",
+      "latency_ms": 0.0,
+      "criteria_order": [
+        "true_positive",
+        "false_positive",
+        "noise"
+      ],
+      "raw": "{\"question\": {\"id\": \"finding.clase\", \"type\": \"choice\", \"prompt\": \"Con el estado dado (alerta SIEM), como se clasifica este finding?\", \"criteria\": [\"true_positive\", \"false_positive\", \"noise\"]}, \"state\"",
+      "created_at": "2026-10-06T18:07:54.733+00:00"
+    }
+  },
+  "finding.confianza": {
+    "question_id": "finding.confianza",
+    "type": "score",
+    "probabilities": {
+      "baja": 0.005301955834127577,
+      "media": 0.020484198371944755,
+      "alta": 0.9687879729585862,
+      "muy_alta": 0.005425872835341391
+    },
+    "expected": 2.974338,
+    "action": null,
+    "text": null,
+    "trace": {
+      "backend": "mock",
+      "model": "mock-1",
+      "privacy": "local",
+      "latency_ms": 0.0,
+      "criteria_order": [
+        "baja",
+        "media",
+        "alta",
+        "muy_alta"
+      ],
+      "raw": "{\"question\": {\"id\": \"finding.confianza\", \"type\": \"score\", \"prompt\": \"Cual es el nivel de confianza en esa clasificacion del finding?\", \"criteria\": [\"baja\", \"media\", \"alta\", \"muy_alta\"]}, \"state\": {\"re",
+      "created_at": "2026-10-06T18:07:54.733+00:00"
+    }
+  },
+  "finding.accion": {
+    "question_id": "finding.accion",
+    "type": "choice",
+    "probabilities": {
+      "cerrar": 0.9337682894041545,
+      "monitorizar": 0.057843918529594994,
+      "escalar": 0.008387792066250606
+    },
+    "expected": null,
+    "action": null,
+    "text": null,
+    "trace": {
+      "backend": "mock",
+      "model": "mock-1",
+      "privacy": "local",
+      "latency_ms": 0.0,
+      "criteria_order": [
+        "cerrar",
+        "monitorizar",
+        "escalar"
+      ],
+      "raw": "{\"question\": {\"id\": \"finding.accion\", \"type\": \"choice\", \"prompt\": \"Que accion inmediata toma el SOC con este finding?\", \"criteria\": [\"cerrar\", \"monitorizar\", \"escalar\"]}, \"state\": {\"ref\": \"soc\"}}",
+      "created_at": "2026-10-06T18:07:54.733+00:00"
+    }
+  }
+}

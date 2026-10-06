@@ -1,0 +1,90 @@
+{
+  "type": "bundle",
+  "id": "bundle--a1b2c3d4-0000-0000-0000-0000000000f8",
+  "spec_version": "2.1",
+  "objects": [
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--T1543",
+      "name": "Create or Preserve Account",
+      "created": "2018-01-04T00:00:00Z",
+      "modified": "2024-01-01T00:00:00Z",
+      "x-mitre-tactics": ["persistence"]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--T1543.001",
+      "name": "Create Account: Local Account",
+      "created": "2018-01-04T00:00:00Z",
+      "modified": "2024-01-01T00:00:00Z",
+      "x-mitre-tactics": ["persistence"],
+      "x-mitre-tech-ref": ["T1543"]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--T1543.002",
+      "name": "Create Account: Domain Account",
+      "created": "2018-01-04T00:00:00Z",
+      "modified": "2024-01-01T00:00:00Z",
+      "x-mitre-tactics": ["persistence"],
+      "x-mitre-tech-ref": ["T1543"]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--T1078",
+      "name": "Valid Accounts",
+      "created": "2016-05-09T00:00:00Z",
+      "modified": "2024-01-01T00:00:00Z",
+      "x-mitre-tactics": ["persistence", "defense-evasion", "privilege-escalation"]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--T1059",
+      "name": "Command and Scripting Interpreter",
+      "created": "2016-05-09T00:00:00Z",
+      "modified": "2024-01-01T00:00:00Z",
+      "x-mitre-tactics": ["execution"]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--T1059.001",
+      "name": "PowerShell",
+      "created": "2016-05-09T00:00:00Z",
+      "modified": "2024-01-01T00:00:00Z",
+      "x-mitre-tactics": ["execution"],
+      "x-mitre-tech-ref": ["T1059"]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--T1562",
+      "name": "Impair Defenses",
+      "created": "2018-09-14T00:00:00Z",
+      "modified": "2024-01-01T00:00:00Z",
+      "x-mitre-tactics": ["defense-evasion"]
+    },
+    {
+      "type": "attack-pattern",
+      "spec_version": "2.1",
+      "id": "attack-pattern--T1068",
+      "name": "Exploitation for Privilege Escalation",
+      "created": "2016-05-09T00:00:00Z",
+      "modified": "2024-01-01T00:00:00Z",
+      "x-mitre-tactics": ["privilege-escalation"]
+    },
+    {
+      "type": "identity",
+      "spec_version": "2.1",
+      "id": "identity--c8d9e0f1-0000-0000-0000-000000000001",
+      "name": "MITRE ATT&CK Team",
+      "created": "2016-05-09T00:00:00Z",
+      "modified": "2016-05-09T00:00:00Z"
+    }
+  ]
+}

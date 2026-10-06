@@ -7,9 +7,10 @@ __pycache__/
 .ruff_cache/
 .mypy_cache/
 
-# Datos y runs locales (nunca al repo publico)
-data/
-runs/
+# Datos y runs locales (nunca al repo publico). Solo en la raiz: los fixtures de
+# tests/data/ SI van al repo (si no, el CI falla).
+/data/
+/runs/
 verificar.txt
 *.env
 .env

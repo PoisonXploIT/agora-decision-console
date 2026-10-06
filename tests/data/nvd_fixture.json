@@ -1,0 +1,56 @@
+{
+  "results": {
+    "vulnerabilities": [
+      {
+        "cve": {
+          "id": "CVE-2021-44228",
+          "published": "2021-12-10T17:15:09.367",
+          "descriptions": [
+            {"lang": "en", "value": "In Apache Log4j 2.x, JNDI features in Logger configurations do not properly internalize certain user-controlled values. An attacker who can control logger messages may execute arbitrary code loaded from a remote code repository when message lookups are enabled."}
+          ],
+          "weaknesses": ["CWE-74", "CWE-502"]
+        }
+      },
+      {
+        "cve": {
+          "id": "CVE-2019-19781",
+          "published": "2019-12-13T16:15:17.413",
+          "descriptions": [
+            {"lang": "en", "value": "An improper privilege management vulnerability in the Windows Common Log File System Driver could allow an attacker to elevate privileges to SYSTEM."}
+          ],
+          "weaknesses": ["CWE-269"]
+        }
+      },
+      {
+        "cve": {
+          "id": "CVE-2017-0144",
+          "published": "2017-03-15T17:29:00.827",
+          "descriptions": [
+            {"lang": "en", "value": "A remote code execution vulnerability exists in how SMBv1 handles specially crafted requests, aka 'EternalBlue'."}
+          ],
+          "weaknesses": ["CWE-254"]
+        }
+      },
+      {
+        "cve": {
+          "id": "CVE-2019-0203",
+          "published": "2019-01-15T17:29:00.847",
+          "descriptions": [
+            {"lang": "en", "value": "Apache Solr 6.x and 7.x is vulnerable to remote code execution due to an insecure deserialization of user-supplied data in the Velocity template engine."}
+          ],
+          "weaknesses": ["CWE-502"]
+        }
+      },
+      {
+        "cve": {
+          "id": "CVE-2023-46809",
+          "published": "2024-01-17T15:15:10.933",
+          "descriptions": [
+            {"lang": "en", "value": "A vulnerability in the web interfaces of Cisco IOS XE Software and Cisco Catalyst 9000 Series switches allows an unauthenticated, remote attacker to execute arbitrary code on the affected device."}
+          ],
+          "weaknesses": ["CWE-787"]
+        }
+      }
+    ]
+  }
+}
