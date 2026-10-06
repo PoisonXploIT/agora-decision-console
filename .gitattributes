@@ -1,0 +1,5 @@
+# Normaliza finales de linea en el repo (evita ruido CRLF/LF entre Windows y Linux).
+* text=auto eol=lf
+*.bat text eol=crlf
+*.png binary
+*.ico binary
