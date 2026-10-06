@@ -241,7 +241,10 @@ async function generarPregunta() {
     }
   } catch (e) {
     $("manual").value = "error: " + e.message;
-    $("gen-info").textContent = "";
+    $("gen-info").textContent =
+      "No se pudo generar. Ese paso lo hace el LLM de chat (por defecto :8099): si esta ocupado o " +
+      "apagado, espera o apunta AGORA_CHAT_URL a otro chat. Los modelos de decision (LAYAA / Eikos / " +
+      "JEV) no pueden hacerlo. Puedes escribir el JSON a mano o usar un pack.";
   }
 }
 
