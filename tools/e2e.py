@@ -51,8 +51,13 @@ def check(nombre: str, fn) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default="http://127.0.0.1:8800")
+    ap.add_argument(
+        "--backends", default="mock,laya",
+        help="backends de decision a probar (por defecto solo mock,laya: LAYA va en CPU y no molesta)",
+    )
     a = ap.parse_args()
     base = a.base.rstrip("/")
+    pedidos = [x.strip().lower() for x in a.backends.split(",") if x.strip()]
 
     def health():
         st, raw = _req(base, "/health", timeout=10)
@@ -106,7 +111,9 @@ def main() -> int:
 
     q_choice = {"id": "e2e.choice", "type": "choice", "prompt": "clasifica el estado",
                 "criteria": ["a", "b", "c"]}
-    for b in list(backends):
+    elegidos = [b for b in pedidos if b in backends]
+    assert elegidos, f"ninguno de {pedidos} esta registrado; hay {backends}"
+    for b in elegidos:
         check(f"decide choice [{b}]", lambda b=b: decidir(b, q_choice))
 
     q_score = {"id": "e2e.score", "type": "score", "prompt": "gravedad",
@@ -114,26 +121,27 @@ def main() -> int:
     q_noul = {"id": "e2e.noul", "type": "noul", "prompt": "requiere accion",
               "criteria": ["si", "no"]}
 
-    for b in ("laya", "eikos-4b"):
-        if b in backends:
-            def _score(b=b):
-                st, raw = _req(base, "/v1/decide", "POST",
-                               {"state": {"e2e": True}, "backend": b, "question": q_score})
-                d = json.loads(raw)
-                assert d["expected"] is not None, "sin expected"
-                return f"expected={d['expected']:.2f}"
-            check(f"decide score [{b}]", _score)
+    for b in [x for x in elegidos if x in ("laya", "eikos-4b")]:
+        def _score(b=b):
+            st, raw = _req(base, "/v1/decide", "POST",
+                           {"state": {"e2e": True}, "backend": b, "question": q_score})
+            d = json.loads(raw)
+            assert d["expected"] is not None, "sin expected"
+            return f"expected={d['expected']:.2f}"
 
-            def _noul(b=b):
-                st, raw = _req(base, "/v1/decide", "POST",
-                               {"state": {"e2e": True}, "backend": b, "question": q_noul})
-                d = json.loads(raw)
-                assert d["action"] in q_noul["criteria"], "sin action"
-                return f"action={d['action']}"
-            check(f"decide noul [{b}]", _noul)
+        check(f"decide score [{b}]", _score)
+
+        def _noul(b=b):
+            st, raw = _req(base, "/v1/decide", "POST",
+                           {"state": {"e2e": True}, "backend": b, "question": q_noul})
+            d = json.loads(raw)
+            assert d["action"] in q_noul["criteria"], "sin action"
+            return f"action={d['action']}"
+
+        check(f"decide noul [{b}]", _noul)
 
     def comparar():
-        nombres = [b for b in ("laya", "eikos-4b", "mock") if b in backends][:3]
+        nombres = elegidos[:3]
         st, raw = _req(base, "/v1/decide/compare", "POST",
                        {"state": {"e2e": True}, "question": q_choice, "backends": nombres})
         d = json.loads(raw)
