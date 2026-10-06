@@ -9,6 +9,7 @@ import math
 
 from agora_core.contract import serialize
 from agora_core.schemas import Decision, DecisionRequest, QuestionType
+
 from .base import BackendAdapter
 
 

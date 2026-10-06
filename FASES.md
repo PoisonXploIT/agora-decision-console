@@ -1,6 +1,6 @@
 # AGORA - hoja de ruta
 
-Repo: `C:\Users\Sammi\AI\agora`. Venv: `.venv` (pydantic, fastapi, uvicorn, pytest, httpx).
+Venv: `.venv` (pydantic, fastapi, uvicorn, reportlab, pytest, httpx).
 
 Comprobador: `.venv\Scripts\python.exe verificar.py` (con `--test` ejecuta los tests; con `--all`
 falla si queda alguna fase). La marca de fin de cada fase es que `verificar.py` la de PASS.
@@ -9,16 +9,15 @@ AGORA es una consola de decisiones tipadas: un estado mas preguntas `choice` / `
 que devuelven probabilidades calibradas, servidas por varios backends (Mock, LAYA local, JEV cloud
 opcional, Eikos local). Una sola UI con dos partes: GENERAL y SOC/SIEM.
 
-Libertad de implementacion: la estructura interna, los nombres de funciones y el orden fino los
-decides tu, siempre que `verificar.py` y los tests pasen. Si una fase crece, partela y anotalo.
+Libertad de implementacion: la estructura interna, los nombres de funciones y el orden fino son
+libres, siempre que `verificar.py` y los tests pasen. Si una fase crece, partirla y anotarlo.
 
 ## Reglas
 
-- Sin nube y sin claves. JEV solo contra un servidor falso local. LAYA en `127.0.0.1:8787`.
-- No escribir fuera del repo (nada de ai-netwatch, sec-dashboard, Auditing, `AI\laya-data`).
+- Sin nube y sin claves: los tests van contra servidores falsos locales; LAYA en `127.0.0.1:8787`.
 - Los `criteria` son posicionales: nunca ordenar claves, nunca `sort_keys=True`. Un test lo prueba.
 - Una pregunta es un juicio atomico; el estado es contenido no confiable.
-- Sin emojis ni flechas de texto. Verificar contra disco. Si algo falta, a `BLOQUEOS.md` y sigue.
+- Verificar contra disco (tests y `verificar.py`), no dar nada por hecho.
 
 ## Fases
 

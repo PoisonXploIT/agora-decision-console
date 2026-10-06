@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """demo_e2e.py - ejemplo end-to-end de AGORA con datos reales de SOC.
 
 Recorre el flujo completo y muestra, para cada pregunta de los packs SOC:
@@ -17,6 +16,7 @@ import json
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 API = "http://127.0.0.1:8800"
 
@@ -120,8 +120,9 @@ def main() -> int:
         )
         with urllib.request.urlopen(pdf_req, timeout=600) as r:
             data = r.read()
-        out = r"C:\Users\Sammi\AI\agora\runs\demo-informe.pdf"
-        open(out, "wb").write(data)
+        out = Path(__file__).resolve().parent.parent / "runs" / "demo-informe.pdf"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(data)
         print(f"informe PDF generado: {out} ({len(data)} bytes)")
     except Exception as e:  # noqa: BLE001
         print("informe PDF: error", e)

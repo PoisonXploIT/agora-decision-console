@@ -3,14 +3,12 @@ from __future__ import annotations
 
 import json
 
-import pytest
-
 from agora.cli import main
 from agora_core.contract import serialize
 from agora_serve.packs import (
     PACKS_DIR,
-    load_pack,
     list_packs,
+    load_pack,
     validate_pack_file,
 )
 

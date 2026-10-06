@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """e2e.py - prueba end-to-end de AGORA contra el servicio en marcha.
 
 Recorre los flujos reales (backends, packs, decidir por tipo, comparar, generar

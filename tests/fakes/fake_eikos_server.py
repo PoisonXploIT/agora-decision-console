@@ -1,14 +1,14 @@
 """Servidor FALSO local de protocolo Eikos (solo tests).
 
-Implementa POST /v1/decide y GET /health en 127.0.0.1 con un puerto
-efimero. Lee la pregunta del cuerpo (JSON que envia EikosAdapter), acepta
-imagenes opcionales (base64) y responde SOLO un JSON con 'probabilities'
-deterministas sobre los criterios, en el orden canonicamente escrito.
+Implementa ``POST /v1/systemone`` (la API compatible TypeSafe que usa de verdad
+``serve.py`` de Eikos) y ``GET /health`` en 127.0.0.1 con un puerto efimero.
+Lee el cuerpo (``state`` + ``questions``), registra las imagenes opcionales y
+responde con el mapa ``answers`` y probabilidades deterministas en el orden
+canonico escrito.
 
 Uso desde pytest:
 
-    server = FakeEikosServer()
-    server.start()
+    server = FakeEikosServer().start()
     try:
         ...  # EikosAdapter(base_url=server.url)
     finally:
@@ -40,36 +40,56 @@ class FakeEikosHandler(BaseHTTPRequestHandler):
             self._json(404, {"error": "no encontrado"})
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path != "/v1/decide":
+        if self.path != "/v1/systemone":
             self._json(404, {"error": "ruta no soportada"})
             return
         try:
             length = int(self.headers.get("Content-Length", "0"))
             req = json.loads(self.rfile.read(length).decode("utf-8"))
-            question = req["question"]
-            criteria = list(question["criteria"])
+            questions = req["questions"]
             images = req.get("images") or []
         except Exception as e:  # noqa: BLE001
             self._json(400, {"error": f"peticion no valida: {e}"})
             return
 
-        # registrar lo recibido para que el test lo inspeccione
         if isinstance(self.server, ThreadingHTTPServer):
             self.server.last_images = list(images)  # type: ignore[attr-defined]
 
-        # distribucion determinista: descendente suave sobre el orden escrito.
-        weights = [1.0 / (i + 1) for i in range(len(criteria))]
-        total = sum(weights)
-        probs = {c: w / total for c, w in zip(criteria, weights)}
+        answers: dict[str, dict] = {}
+        for qid, q in questions.items():
+            qtype = str(q.get("type", "choice"))
+            crit = q.get("criteria")
+            if qtype == "choice":
+                names = list(crit) if isinstance(crit, dict) else list(crit or [])
+                weights = [1.0 / (i + 1) for i in range(len(names))]
+                total = sum(weights) or 1.0
+                probs = {n: w / total for n, w in zip(names, weights)}
+                answers[qid] = {
+                    "type": "choice",
+                    "choice": max(probs, key=probs.get) if probs else None,
+                    "probabilities": probs,
+                    "confidence": max(probs.values()) if probs else 0.0,
+                }
+            elif qtype == "score":
+                levels = list(crit or [])
+                weights = [1.0 / (i + 1) for i in range(len(levels))]
+                total = sum(weights) or 1.0
+                probs = {str(i): w / total for i, w in enumerate(weights)}
+                answers[qid] = {
+                    "type": "score",
+                    "score": 0.0,
+                    "legend": {str(i): lv for i, lv in enumerate(levels)},
+                    "probabilities": probs,
+                    "confidence": max(probs.values()) if probs else 0.0,
+                }
+            else:  # noul: probabilidad de 'true'
+                answers[qid] = {"type": "noul", "noul": 0.6, "confidence": 0.6}
 
-        self._json(
-            200,
-            {
-                "probabilities": probs,
-                "model": "eikos-4b",
-                "images_seen": len(images),
-            },
-        )
+        self._json(200, {
+            "model": "eikos-4b",
+            "answers": answers,
+            "usage": {"input_tokens": 0, "output_tokens": 0},
+        })
 
 
 class FakeEikosServer:
@@ -80,19 +100,16 @@ class FakeEikosServer:
         self._thread: threading.Thread | None = None
         self.url: str = ""
 
-    def start(self) -> "FakeEikosServer":
+    def start(self) -> FakeEikosServer:
         self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), FakeEikosHandler)
-        # el handler registra las imagenes recibidas en self.server.last_images
         self._httpd.last_images = None  # type: ignore[attr-defined]
         self.url = f"http://127.0.0.1:{self._httpd.server_address[1]}"
-        self._thread = threading.Thread(
-            target=self._httpd.serve_forever, daemon=True
-        )
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
         self._thread.start()
         return self
 
     @property
-    def last_images(self) -> list[str] | None:  # noqa: F811
+    def last_images(self) -> list[str] | None:
         if self._httpd is not None:
             return getattr(self._httpd, "last_images", None)
         return None

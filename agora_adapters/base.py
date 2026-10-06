@@ -13,7 +13,6 @@ probabilidades con las claves en el orden canonico de la pregunta.
 from __future__ import annotations
 
 import hashlib
-import math
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -103,7 +102,6 @@ def make_decision(
 
 def expected_from_probs(probs: dict[str, float]) -> float:
     """Valor esperado de una escala ordinal 1..N sobre probabilidades."""
-    n = len(probs)
     return sum((i + 1) * p for i, p in enumerate(probs.values()))
 
 

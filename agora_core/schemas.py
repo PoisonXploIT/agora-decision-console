@@ -45,7 +45,7 @@ class Question(BaseModel):
     criteria: list[str] = Field(min_length=1)
 
     @model_validator(mode="after")
-    def _check_criteria(self) -> "Question":
+    def _check_criteria(self) -> Question:
         for c in self.criteria:
             if not isinstance(c, str) or not c.strip():
                 raise ValueError("cada criterio debe ser un texto no vacio")

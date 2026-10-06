@@ -22,6 +22,7 @@ from agora_core.schemas import (  # noqa: F401
     Question,
     QuestionType,
 )
+
 from .base import (
     AdapterError,
     BackendAdapter,

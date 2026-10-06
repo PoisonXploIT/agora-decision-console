@@ -87,7 +87,7 @@ class FakeOpenAIServer:
         self._thread: threading.Thread | None = None
         self.url: str = ""
 
-    def start(self) -> "FakeOpenAIServer":
+    def start(self) -> FakeOpenAIServer:
         self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), FakeOpenAIHandler)
         self.url = f"http://127.0.0.1:{self._httpd.server_address[1]}"
         self._thread = threading.Thread(

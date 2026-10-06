@@ -23,7 +23,7 @@ from io import BytesIO
 from typing import Any
 
 from reportlab.graphics.charts.barcharts import HorizontalBarChart
-from reportlab.graphics.shapes import Drawing, String
+from reportlab.graphics.shapes import Drawing
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_LEFT
 from reportlab.lib.pagesizes import A4

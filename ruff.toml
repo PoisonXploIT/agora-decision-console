@@ -1,0 +1,17 @@
+line-length = 100
+target-version = "py310"
+
+[lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+    "E501",    # longitud de linea: la controla el formateador
+    "SIM105",  # contextlib.suppress: preferimos try/except explicito
+    "SIM102",  # if anidados que se pueden colapsar: a veces es mas legible asi
+    "SIM115",  # open sin context manager en launchers de corta vida
+    "B008",
+    "B905",    # zip sin strict: los pares estan alineados por construccion
+    "E402",    # tools/*: sys.path.insert antes de importar el paquete local
+]
+
+[lint.per-file-ignores]
+"tests/*" = ["B011"]

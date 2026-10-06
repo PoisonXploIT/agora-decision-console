@@ -15,6 +15,7 @@ La respuesta JSON conserva el orden de insercion de las probabilidades
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 from pathlib import Path
@@ -23,13 +24,13 @@ from typing import Any
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from agora_adapters import MockAdapter
 from agora_core.schemas import (  # noqa: F401
     BackendInfo,
     Decision,
     DecisionRequest,
     Question,
 )
-from agora_adapters import MockAdapter
 
 
 class DecideBody(BaseModel):

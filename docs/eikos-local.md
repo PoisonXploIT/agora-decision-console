@@ -1,81 +1,104 @@
 # Eikos local (guia de arranque)
 
-AGORA consume Eikos a traves de `EikosAdapter` (`agora_adapters/eikos.py`),
-que habla HTTP con un servidor local `serve.py` en `http://127.0.0.1:8901`.
-Sin nube, sin claves: todo queda en la maquina.
+Eikos es un modelo de **decision tipada** (choice / score / noul) que responde
+en una sola pasada, con una probabilidad por opcion. Su `serve.py` habla la
+**API compatible TypeSafe** (`POST /v1/systemone`), la misma que LAYA y JEV, asi
+que AGORA lo usa con el mismo adaptador HTTP (`agora_adapters/laya.py`).
+
+Sin nube y sin claves: el servidor escucha en `127.0.0.1`.
 
 ## Que cabe en 16 GB
 
-- **Eikos-4B**: cabe con holgura en 16 GB de VRAM (cuantizado INT4/INT8)
-  y es el modelo recomendado para esta consola.
-- **Eikos-27B INT4**: son 19,4 GB y **no caben** en 16 GB. No intentarlo:
-  ni cuantizacion extra ni offload a CPU compensan la latencia para una
-  consola de decisiones.
+- **Eikos-4B** (~9 GB en bf16): cabe en 16 GB de VRAM. Es el recomendado.
+- **Eikos-27B INT4**: 19,4 GB; **no cabe** en 16 GB. Hace falta una GPU mayor,
+  vLLM con offload parcial (lento) o paciencia.
+
+## Descarga de los pesos
+
+Los pesos estan en Hugging Face (`caiovicentino1/Eikos-4B`). Con el cliente de
+HF:
+
+```bash
+python -m pip install huggingface_hub
+huggingface-cli download caiovicentino1/Eikos-4B --local-dir <carpeta>/Eikos-4B
+```
+
+Incluye `serve.py`, `decision_core.py`, `letter_adapter.py` y `calib.json`
+junto a los `safetensors`: no hay que clonar nada mas.
 
 ## Arranque
 
-1. Poner el modelo descargado en `C:\Users\Sammi\AI\eikos\models\eikos-4b`.
-2. Servirlo con el servidor local (el mismo que usa LAYA, apuntando al
-   directorio del modelo):
+```bash
+cd <carpeta>/Eikos-4B
+python serve.py --model <carpeta>/Eikos-4B --device cpu  --port 8901
+python serve.py --model <carpeta>/Eikos-4B --device cuda --port 8901
+```
 
-   ```bat
-   C:\Users\Sammi\AI\eikos\.venv\Scripts\python.exe serve.py ^
-     --model C:\Users\Sammi\AI\eikos\models\eikos-4b ^
-     --host 127.0.0.1 --port 8901
-   ```
+- `--device cpu`: sin GPU, apto para convivir con otro modelo en la tarjeta.
+- `--device cuda`: mucho mas rapido, pero ocupa la GPU.
+- Para produccion existe `serve_vllm.sh` (exige vLLM >= 0.30) y `serve.py
+  --vllm-url`.
 
-3. Comprobar salud: `GET http://127.0.0.1:8901/health` debe devolver
-   `{"ok": true, ...}`.
+Salud: `GET http://127.0.0.1:8901/health`.
 
-## Protocolo (POST /v1/decide)
+## API (POST /v1/systemone)
 
-Petición:
+Peticion:
 
 ```json
 {
-  "question": {"id": "...", "type": "choice", "prompt": "...", "criteria": ["a", "b"]},
   "state": { },
-  "images": ["<base64>", "<base64>"]
+  "questions": {
+    "q1": {
+      "type": "choice",
+      "instructions": "clasifica el evento",
+      "criteria": { "a": "opcion a", "b": "opcion b" }
+    }
+  }
 }
 ```
 
-- `images` es **opcional**: base64 de imagenes que el modelo puede ver
-  (por ejemplo, capturas del SIEM en la parte SOC). Sin imagenes, el campo
-  no se envia.
+- `criteria` de `choice` es un mapa `opcion -> descripcion` (se conserva el orden).
+- `score` usa una lista de niveles en orden; `noul` (si/no) usa las claves
+  `true` / `false`.
 
 Respuesta:
 
 ```json
 {
-  "probabilities": [0.7, 0.3],
-  "expected": null,
-  "action": null,
-  "text": null,
-  "model": "eikos-4b"
+  "model": "...Eikos-4B",
+  "answers": {
+    "q1": {
+      "type": "choice",
+      "choice": "a",
+      "probabilities": { "a": 0.75, "b": 0.25 },
+      "confidence": 0.75
+    }
+  },
+  "usage": { "input_tokens": 128, "output_tokens": 0 },
+  "latency_s": 1.36
 }
 ```
 
-- `probabilities` puede ser lista alineada por posicion con `criteria` o
-  dict `{criterio: p}`; el adaptador normaliza al orden canonico y valida
+- `score` devuelve ademas `score` y `legend` (claves `"0".."N-1"`).
+- `noul` devuelve `noul` (probabilidad de `true`).
+- El adaptador normaliza todo al **orden canonico** de los criterios y valida
   contra el contrato de decision.
-- Para preguntas `score`, el servidor puede enviar `expected` (valor
-  esperado 1..N); para `noul`, `action` y `text`. Si no los envia, el
-  adaptador los calcula (argmax y texto local).
 
 ## Uso desde AGORA
 
-```python
-from agora_adapters import EikosAdapter
-ad = EikosAdapter(base_url="http://127.0.0.1:8901")
-decision = ad.decide(request, images=[b64])   # images opcional
+Registrar el backend (una vez; queda persistido en `%USERPROFILE%\.agora\backends.json`):
+
+```bash
+curl -X POST http://127.0.0.1:8800/backends -H "Content-Type: application/json" \
+  -d '{"name":"eikos-4b","kind":"http","base_url":"http://127.0.0.1:8901"}'
 ```
 
-O por CLI/servicio una vez registrado el backend en el registry de
-`agora_serve`. El `Trace` de la decision lleva `backend="eikos"`,
-`privacy="local"` y el modelo reportado por el servidor.
+O desde la UI, panel "Modelos de decision": preset **Eikos-4B**, boton
+**Levantar** (abre su consola con los logs) y **Guardar modelo**.
 
 ## Verificacion sin Eikos real
 
 Los tests usan un servidor falso con el mismo protocolo
-(`tests/fakes/fake_eikos_server.py`), por lo que `pytest
+(`tests/fakes/fake_eikos_server.py`), asi que `pytest
 tests/test_adapters_eikos.py` pasa sin modelo ni GPU.

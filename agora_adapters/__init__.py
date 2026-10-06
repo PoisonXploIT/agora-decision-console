@@ -6,9 +6,9 @@
 - ``eikos`` : EikosAdapter por HTTP a serve.py de Eikos (127.0.0.1:8901).
 """
 from .base import AdapterError, BackendAdapter
-from .mock import MockAdapter
-from .laya import LayaAdapter
 from .eikos import EikosAdapter
+from .laya import LayaAdapter
+from .mock import MockAdapter
 
 __all__ = [
     "AdapterError",

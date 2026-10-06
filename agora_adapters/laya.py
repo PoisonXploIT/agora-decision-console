@@ -35,6 +35,7 @@ from agora_core.schemas import (
     Question,
     QuestionType,
 )
+
 from .base import (
     AdapterError,
     BackendAdapter,
@@ -116,7 +117,7 @@ class LayaAdapter(BackendAdapter):
 
     # --- llamada ----------------------------------------------------------
 
-    def decide(self, request: DecisionRequest) -> Decision:
+    def decide(self, request: DecisionRequest, images: list[str] | None = None) -> Decision:
         q = request.question
         payload_obj: dict = {
             "state": request.state,
@@ -125,6 +126,9 @@ class LayaAdapter(BackendAdapter):
         if self.model:
             # La API cloud (TypeSafe/JEV) exige 'model'; laya-serve lo ignora.
             payload_obj["model"] = self.model
+        if images:
+            # Eikos serve.py acepta 'images' (data URIs o base64); los demas lo ignoran.
+            payload_obj["images"] = list(images)
         payload = json.dumps(payload_obj, ensure_ascii=False)
         headers = {"Content-Type": "application/json"}
         if self.api_key:
