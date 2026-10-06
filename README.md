@@ -1,5 +1,7 @@
 # AGORA
 
+![CI](https://github.com/PoisonXploIT/agora-decision-console/actions/workflows/ci.yml/badge.svg)
+
 Consola de **decisiones tipadas**: un estado y preguntas `choice` / `score` /
 `noul` que devuelven probabilidades calibradas, servidas por varios backends
 (Mock determinista, LAYA local, Eikos local, JEV cloud opcional). Una sola
