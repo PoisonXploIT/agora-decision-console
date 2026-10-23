@@ -610,6 +610,23 @@ def create_app() -> FastAPI:
         return PlainTextResponse(metrics.render(runs_db.count()),
                                  media_type="text/plain; version=0.0.4")
 
+    @app.get("/v1/mcp")
+    def mcp_info() -> dict:
+        """Como conectar este AGORA como servidor MCP (stdio)."""
+        import sys as _sys
+
+        from agora_mcp.tools import TOOLS as MCP_TOOLS
+
+        root = str(Path(__file__).resolve().parents[1])
+        return {
+            "transport": "stdio",
+            "protocol": "2024-11-05",
+            "command": _sys.executable,
+            "args": ["-m", "agora_mcp"],
+            "env": {"AGORA_URL": "http://127.0.0.1:8800", "PYTHONPATH": root},
+            "tools": [{"name": t["name"], "description": t["description"]} for t in MCP_TOOLS],
+        }
+
     @app.get("/v1/integrations")
     def integrations_status() -> dict:
         sinks = integrations.status()

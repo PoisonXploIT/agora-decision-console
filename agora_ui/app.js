@@ -561,6 +561,7 @@ function initTabs() {
       t.setAttribute("aria-selected", on ? "true" : "false");
     });
     if (vista === "historial") cargarHistorial(true);
+    if (vista === "integraciones") cargarIntegraciones();
     try { localStorage.setItem("agora-vista", vista); } catch (e) { /* privado */ }
   };
   tabs.forEach((t) => t.addEventListener("click", () => show(t.dataset.vista)));
@@ -746,12 +747,24 @@ async function vaciarHistorial() {
   }
 }
 
+function filaTabla(celdas) {
+  const tr = document.createElement("tr");
+  for (const c of celdas) {
+    const td = document.createElement("td");
+    td.textContent = c;
+    tr.appendChild(td);
+  }
+  return tr;
+}
+
 async function cargarIntegraciones() {
+  let sinks = [];
+  let claves = 0;
   try {
     const d = await jsonFetch("/v1/integrations");
-    const sinks = d.sinks || [];
+    sinks = d.sinks || [];
+    claves = d.api_keys || 0;
     const activos = sinks.filter((w) => w.enabled).length;
-    const claves = d.api_keys || 0;
     const tipos = [...new Set(sinks.map((w) => w.type))].join(", ");
     $("integraciones").textContent =
       `integraciones: ${activos} sink(s) activo(s)` +
@@ -760,6 +773,51 @@ async function cargarIntegraciones() {
   } catch (e) {
     $("integraciones").textContent = "integraciones: —";
   }
+
+  const cuerpo = $("sinks-body");
+  if (cuerpo) {
+    cuerpo.innerHTML = "";
+    if (!sinks.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 4;
+      td.className = "muted";
+      td.textContent = "Sin sinks: crea ~/.agora/integrations.json (ver integrations/README.md)";
+      tr.appendChild(td);
+      cuerpo.appendChild(tr);
+    }
+    for (const s of sinks) {
+      const destino = s.type === "jsonl" ? s.file
+        : s.type === "syslog" ? `${s.host}:${s.port}`
+        : s.type === "telegram" ? `chat ${s.chat}`
+        : `${s.host || ""}${s.path || ""}`;
+      cuerpo.appendChild(filaTabla([s.type, destino, (s.events || []).join(", "),
+                                    s.enabled ? "activo" : "desactivado"]));
+    }
+    $("int-resumen").textContent = `${sinks.length} sink(s) · ${claves} clave(s)`;
+  }
+
+  try {
+    const m = await jsonFetch("/v1/mcp");
+    const cfg = { mcpServers: { agora: { command: m.command, args: m.args, env: m.env } } };
+    $("mcp-config").textContent = JSON.stringify(cfg, null, 2);
+    const tb = $("mcp-tools");
+    if (tb) {
+      tb.innerHTML = "";
+      for (const t of m.tools || []) tb.appendChild(filaTabla([t.name, t.description]));
+    }
+  } catch (e) {
+    $("mcp-config").textContent = "error: " + e.message;
+  }
+
+  try {
+    const r = await fetch("/metrics");
+    const txt = await r.text();
+    $("metrics").textContent = txt.split(String.fromCharCode(10)).slice(0, 60).join(String.fromCharCode(10));
+  } catch (e) {
+    $("metrics").textContent = "error: " + e.message;
+  }
+  $("int-msg").textContent = "actualizado " + new Date().toLocaleTimeString("es-ES");
 }
 
 async function cargarLogs() {
@@ -871,6 +929,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("hist-csv").addEventListener("click", exportarCsv);
   $("hist-clear").addEventListener("click", vaciarHistorial);
   $("logs-refresh").addEventListener("click", cargarLogs);
+  $("int-refresh").addEventListener("click", cargarIntegraciones);
   $("logs-box").addEventListener("toggle", () => { if ($("logs-box").open) cargarLogs(); });
   $("cancelar-cmp").addEventListener("click", () => { ABORTAR_CMP = true; });
   document.querySelectorAll("#nl-ejemplos [data-ej]").forEach((b) =>
