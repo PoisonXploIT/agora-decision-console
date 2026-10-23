@@ -92,7 +92,23 @@ def start(name: str) -> dict[str, Any]:
         return {"name": name, "lanzado": False, "msg": "ya estaba levantado", "up": True}
     _lanzar(starter)
     _LAST_START[name] = time.time()
+    _audit(f"start {name} -> {starter}")
     return {"name": name, "lanzado": True, "starter": starter, "msg": "ventana abierta; mira los logs"}
+
+
+def _audit(msg: str) -> None:
+    """Registro de acciones sensibles (arrancar, parar, matar)."""
+    try:
+        f = _dir() / "audit.log"
+        f.parent.mkdir(parents=True, exist_ok=True)
+        with open(f, "a", encoding="utf-8") as fh:
+            fh.write(f"{time.strftime('%Y-%m-%d %H:%M:%S')} {msg}\n")
+        try:
+            f.chmod(0o600)
+        except OSError:
+            pass
+    except Exception:
+        pass
 
 
 def _lanzar(starter: str) -> None:
@@ -103,12 +119,19 @@ def _lanzar(starter: str) -> None:
         subprocess.Popen(["cmd", "/c", starter], creationflags=CREATE_NEW_CONSOLE)
 
 
+UI_PORT = 8800
+
+
 def stop(name: str) -> dict[str, Any]:
     cfg = local_models().get(name) or {}
     _PAUSED.add(name)  # que el supervisor no lo relance
     port = _port(cfg.get("probe") or "")
     if not port:
         raise RuntimeError(f"sin puerto conocido para {name!r} (models.json: probe)")
+    if port == UI_PORT:
+        raise RuntimeError("el probe apunta al puerto de la propia consola (8800); abortado")
+    if not (1024 <= port <= 65535):
+        raise RuntimeError(f"puerto fuera de rango: {port}")
     try:
         res = subprocess.run(["netstat", "-ano"], capture_output=True, timeout=20)
         out = (res.stdout or b"").decode("cp850", "replace")
@@ -120,11 +143,23 @@ def stop(name: str) -> dict[str, Any]:
             parts = line.split()
             if parts:
                 pids.add(parts[-1])
+    propio = str(os.getpid())
+    pids.discard(propio)
+    pids.discard("0")
+    pids.discard("4")
+    if not pids:
+        _audit(f"stop {name} puerto {port}: nada que parar")
+        return {"name": name, "puerto": port, "parados": [],
+                "msg": "nada escuchando en el puerto (o era este proceso)"}
     parados = []
     for pid in sorted(pids):
-        subprocess.run(["taskkill", "/F", "/T", "/PID", pid], capture_output=True, text=True)
-        parados.append(pid)
-    return {"name": name, "puerto": port, "parados": parados}
+        r = subprocess.run(["taskkill", "/F", "/T", "/PID", pid],
+                           capture_output=True, text=True)
+        if r.returncode == 0:
+            parados.append(pid)
+    _audit(f"stop {name} puerto {port}: pids {sorted(pids)} parados {parados}")
+    return {"name": name, "puerto": port, "parados": parados,
+            "msg": f"{len(parados)} proceso(s) terminados"}
 
 
 # ------------------------------------------------------------------ supervisor

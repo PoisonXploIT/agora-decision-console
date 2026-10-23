@@ -44,6 +44,10 @@ def save(items: list[dict[str, Any]]) -> None:
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_suffix(".tmp")
         tmp.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            tmp.chmod(0o600)  # contiene claves de API: solo el usuario
+        except OSError:
+            pass
         tmp.replace(p)
     except Exception:
         pass
@@ -53,6 +57,16 @@ def upsert(item: dict[str, Any]) -> list[dict[str, Any]]:
     items = load()
     items = [x for x in items if x.get("name") != item.get("name")]
     items.append(item)
+    save(items)
+    return items
+
+
+def remove_key(name: str) -> list[dict[str, Any]]:
+    """Borra la clave de un backend sin tocar el resto de su configuracion."""
+    items = load()
+    for it in items:
+        if it.get("name") == name:
+            it["api_key"] = None
     save(items)
     return items
 

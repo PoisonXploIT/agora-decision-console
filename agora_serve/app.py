@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from agora_adapters import MockAdapter
 from agora_core.schemas import (  # noqa: F401
@@ -31,6 +31,7 @@ from agora_core.schemas import (  # noqa: F401
     DecisionRequest,
     Question,
 )
+from agora_serve import security
 
 
 class DecideBody(BaseModel):
@@ -41,22 +42,34 @@ class CompareBody(BaseModel):
     question: Any
     state: Any = None
     backends: list[str] | None = Field(
-        default=None, description="nombres de backend; por defecto todos"
+        default=None, max_length=10, description="nombres de backend; por defecto todos"
     )
 
 
 class BackendConfig(BaseModel):
     """Alta de un backend en caliente (local o API). La clave vive solo en memoria."""
 
-    name: str = Field(min_length=1)
+    name: str = Field(min_length=1, max_length=32, pattern="^[A-Za-z0-9][A-Za-z0-9_.-]*$")
     kind: str = "http"  # mock | http (compatible TypeSafe: LAYA local, JEV API, Eikos serve)
-    base_url: str | None = None
-    api_key: str | None = None
-    model: str | None = None
+    base_url: str | None = Field(default=None, max_length=500)
+    api_key: str | None = Field(default=None, max_length=512)
+    model: str | None = Field(default=None, max_length=128)
+
+    @field_validator("base_url")
+    @classmethod
+    def _check_base_url(cls, v: str | None) -> str | None:
+        if v is None or not str(v).strip():
+            return None
+        return security.validate_backend_url(str(v))
+
+
+class StopBody(BaseModel):
+    confirm: bool = Field(default=False, description="true para matar el proceso")
 
 
 class FromTextBody(BaseModel):
-    text: str = Field(min_length=1, description="instruccion en lenguaje natural")
+    text: str = Field(min_length=1, max_length=4000,
+                      description="instruccion en lenguaje natural")
     type: str | None = Field(default=None, description="tipo preferido: choice | score | noul")
 
 
@@ -64,7 +77,8 @@ class ReportBody(BaseModel):
     title: str | None = None
     state: Any = None
     pack: str | None = Field(default=None, description="nombre del pack a evaluar")
-    questions: list[Any] | None = Field(default=None, description="preguntas sueltas")
+    questions: list[Any] | None = Field(default=None, max_length=50,
+                                        description="preguntas sueltas")
     backends: list[str] | None = None
 
 
@@ -115,8 +129,29 @@ CATALOG = [
 ]
 
 
+MAX_RUNS = 200
+MAX_STATE_BYTES = 64_000
+
+
+def _check_state_size(state: Any) -> None:
+    try:
+        blob = json.dumps(state, ensure_ascii=False).encode("utf-8")
+    except (TypeError, ValueError) as e:
+        raise HTTPException(status_code=422, detail=f"state no serializable: {e}") from e
+    if len(blob) > MAX_STATE_BYTES:
+        raise HTTPException(status_code=413,
+                            detail=f"state demasiado grande ({len(blob)} bytes; max {MAX_STATE_BYTES})")
+
+
+def _push_run(runs: list[dict], item: dict) -> None:
+    runs.append(item)
+    if len(runs) > MAX_RUNS:
+        del runs[: len(runs) - MAX_RUNS]
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="AGORA", version="0.0.1")
+    security.install(app)
     registry: dict[str, Any] = {"mock": MockAdapter()}
     runs: list[dict] = []
     from agora_serve import store
@@ -198,9 +233,15 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e)) from e
 
     @app.post("/models/{name}/stop")
-    def model_stop(name: str) -> dict:
+    def model_stop(name: str, body: StopBody) -> dict:
         from agora_serve import models as m
 
+        if not body.confirm:
+            raise HTTPException(
+                status_code=428,
+                detail="confirmacion requerida: envia {\"confirm\": true}; se matara el proceso "
+                       "que escuche en el puerto del modelo",
+            )
         try:
             return {"ok": True, **m.stop(name.strip().lower())}
         except Exception as e:  # noqa: BLE001
@@ -252,6 +293,17 @@ def create_app() -> FastAPI:
         info = adapter.info().model_dump()
         info["name"] = name
         return {"ok": True, "backend": info, "backends": list(registry), "persistido": True}
+
+    @app.delete("/backends/{name}/key")
+    def delete_backend_key(name: str) -> dict:
+        name = name.strip().lower()
+        if name not in registry:
+            raise HTTPException(status_code=404, detail="backend no registrado")
+        adapter = registry[name]
+        if hasattr(adapter, "api_key"):
+            adapter.api_key = ""
+        store.remove_key(name)
+        return {"ok": True, "backends": list(registry)}
 
     @app.delete("/backends/{name}")
     def del_backend(name: str) -> dict:
@@ -353,6 +405,7 @@ def create_app() -> FastAPI:
 
     @app.post("/v1/decide", response_model=Decision)
     def decide(body: DecisionRequest) -> Decision:
+        _check_state_size(body.state)
         name = (body.backend or "mock").lower()
         if name not in registry:
             raise HTTPException(
@@ -364,22 +417,21 @@ def create_app() -> FastAPI:
             decision = registry[name].decide(body)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=502, detail=str(e)) from e
-        runs.append(
-            {
-                "ts": time.time(),
-                "backend": name,
-                "question_id": body.question.id,
-                "type": decision.type.value,
-                "probabilities": dict(decision.probabilities),
-                "expected": decision.expected,
-                "action": decision.action,
-                "latency_ms": round((time.monotonic() - t0) * 1000.0, 3),
-            }
-        )
+        _push_run(runs, {
+            "ts": time.time(),
+            "backend": name,
+            "question_id": body.question.id,
+            "type": decision.type.value,
+            "probabilities": dict(decision.probabilities),
+            "expected": decision.expected,
+            "action": decision.action,
+            "latency_ms": round((time.monotonic() - t0) * 1000.0, 3),
+        })
         return decision
 
     @app.post("/v1/decide/compare")
     def compare(body: CompareBody) -> dict:
+        _check_state_size(body.state)
         question = (
             Question.model_validate(body.question)
             if isinstance(body.question, dict)
@@ -405,18 +457,16 @@ def create_app() -> FastAPI:
                 errors[name] = str(e)
                 continue
             results[name] = d
-            runs.append(
-                {
-                    "ts": time.time(),
-                    "backend": name,
-                    "question_id": question.id,
-                    "type": d.type.value,
-                    "probabilities": dict(d.probabilities),
-                    "expected": d.expected,
-                    "action": d.action,
-                    "latency_ms": 0.0,
-                }
-            )
+            _push_run(runs, {
+                "ts": time.time(),
+                "backend": name,
+                "question_id": question.id,
+                "type": d.type.value,
+                "probabilities": dict(d.probabilities),
+                "expected": d.expected,
+                "action": d.action,
+                "latency_ms": 0.0,
+            })
         if not results:
             raise HTTPException(status_code=502, detail={"errors": errors})
         return {

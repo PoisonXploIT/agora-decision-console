@@ -22,8 +22,38 @@ let BACKENDS = [];
 
 async function jsonFetch(url, opts) {
   const r = await fetch(API + url, opts);
-  if (!r.ok) throw new Error(`${r.status} ${await r.text()}`);
+  if (!r.ok) {
+    let detail = await r.text();
+    try {
+      const j = JSON.parse(detail);
+      detail = typeof j.detail === "string" ? j.detail : JSON.stringify(j.detail ?? j);
+    } catch (e) { /* texto plano */ }
+    throw new Error(`${r.status} ${detail}`);
+  }
   return r.json();
+}
+
+/* Dialogo de confirmacion (botones + Escape; sin depender del evento close). */
+function confirmAction(title, text) {
+  return new Promise((resolve) => {
+    const dlg = $("confirm");
+    $("confirm-title").textContent = title;
+    $("confirm-text").textContent = text;
+    const buttons = [...dlg.querySelectorAll("button[value]")];
+    const finish = (value) => {
+      buttons.forEach((b) => b.removeEventListener("click", b._onClick));
+      dlg.removeEventListener("cancel", onCancel);
+      dlg.close();
+      resolve(value === "ok");
+    };
+    const onCancel = (ev) => { ev.preventDefault(); finish("cancel"); };
+    buttons.forEach((b) => {
+      b._onClick = (ev) => { ev.preventDefault(); finish(b.value); };
+      b.addEventListener("click", b._onClick);
+    });
+    dlg.addEventListener("cancel", onCancel);
+    dlg.showModal();
+  });
 }
 
 function esc(s) {
@@ -45,9 +75,12 @@ function chip(id, texto, estado) {
 async function cargarBackends() {
   const body = await jsonFetch("/backends");
   BACKENDS = body.backends || [];
-  $("backend").innerHTML = BACKENDS
+  const sel = $("backend");
+  const previo = sel.value;
+  sel.innerHTML = BACKENDS
     .map((b) => `<option value="${esc(b.name)}">${esc(b.name)} (${esc(b.privacy)})</option>`)
     .join("");
+  if (previo && BACKENDS.some((b) => b.name === previo)) sel.value = previo;
   renderModelos();
   chip("chip-backends", `${BACKENDS.length} backends`, BACKENDS.length ? "ok" : "err");
 }
@@ -75,14 +108,16 @@ function renderModelos() {
 
 let CATALOG = [];
 
-async function cargarCatalogo() {
+async function cargarCatalogo(inicial = false) {
   const d = await jsonFetch("/catalog");
   CATALOG = d.catalog || [];
+  const previo = $("m-preset").value;
   const presets = CATALOG.filter((c) => c.kind !== "chat");
   $("m-preset").innerHTML =
     presets.map((c) => `<option value="${esc(c.name)}">${esc(c.label)}</option>`).join("") +
     '<option value="">personalizado...</option>';
-  aplicarPreset();
+  if (previo) $("m-preset").value = previo;
+  if (inicial) aplicarPreset();  // no pisar lo que el usuario esta escribiendo
   renderServidores();
 }
 
@@ -114,18 +149,29 @@ async function arrancarModelo(name) {
   } catch (e) {
     $("m-msg").textContent = "error: " + e.message;
   }
-  setTimeout(cargarCatalogo, 6000);
+  setTimeout(() => cargarCatalogo(false), 6000);
 }
 
 async function pararModelo(name) {
+  const ok = await confirmAction(
+    "Detener " + name,
+    `Se ejecutara taskkill sobre el proceso que escuche en el puerto del modelo ${name}. ` +
+    "La accion queda registrada en el log de auditoria."
+  );
+  if (!ok) return;
   $("m-msg").textContent = `parando ${name}...`;
   try {
-    const d = await jsonFetch(`/models/${encodeURIComponent(name)}/stop`, { method: "POST" });
-    $("m-msg").textContent = `${name}: parados ${JSON.stringify(d.parados || [])}`;
+    const d = await jsonFetch(`/models/${encodeURIComponent(name)}/stop`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ confirm: true }),
+    });
+    const pids = (d.parados || []).join(", ") || "ninguno";
+    $("m-msg").textContent = `${name}: puerto ${d.puerto ?? "?"}, pids parados ${pids}`;
   } catch (e) {
     $("m-msg").textContent = "error: " + e.message;
   }
-  setTimeout(cargarCatalogo, 3000);
+  setTimeout(() => cargarCatalogo(false), 3000);
 }
 
 function aplicarPreset() {
@@ -459,23 +505,60 @@ async function informePdf() {
   }
 }
 
-/* ------------------------------------------------------------- inicio */
+/* ------------------------------------------------- pestanas y sondeo */
 
-document.addEventListener("DOMContentLoaded", async () => {
+function initTabs() {
+  const tabs = [...document.querySelectorAll(".tab")];
+  const show = (vista) => {
+    document.querySelectorAll(".vista").forEach((v) => {
+      v.classList.toggle("hidden", v.id !== "vista-" + vista);
+    });
+    tabs.forEach((t) => {
+      const on = t.dataset.vista === vista;
+      t.classList.toggle("active", on);
+      t.setAttribute("aria-selected", on ? "true" : "false");
+    });
+    try { localStorage.setItem("agora-vista", vista); } catch (e) { /* privado */ }
+  };
+  tabs.forEach((t) => t.addEventListener("click", () => show(t.dataset.vista)));
+  let guardada = "decidir";
+  try { guardada = localStorage.getItem("agora-vista") || "decidir"; } catch (e) { /* privado */ }
+  show(guardada === "modelos" ? "modelos" : "decidir");
+}
+
+let intervaloEstado = null;
+
+async function refrescarEstado() {
   try {
     await jsonFetch("/health");
     chip("chip-servicio", "servicio OK", "ok");
+    $("chip-servicio").title = "comprobado a las " + new Date().toLocaleTimeString("es-ES");
   } catch (e) {
     chip("chip-servicio", "servicio caido", "err");
+    $("chip-servicio").title = String(e.message || e);
   }
+  try { await cargarBackends(); } catch (e) { /* el chip ya lo indica */ }
+  try { await cargarCatalogo(false); } catch (e) { /* sin catalogo */ }
+}
+
+function initPolling() {
+  refrescarEstado();
+  intervaloEstado = setInterval(refrescarEstado, 10000);
+}
+
+/* ------------------------------------------------------------- inicio */
+
+document.addEventListener("DOMContentLoaded", async () => {
+  initTabs();
   chip("chip-parte", $("parte").value);
   try {
     await cargarBackends();
     await cargarPacks();
-    await cargarCatalogo();
+    await cargarCatalogo(true);
   } catch (e) {
     $("traza").textContent = String(e);
   }
+  initPolling();
 
   $("m-preset").addEventListener("change", aplicarPreset);
 

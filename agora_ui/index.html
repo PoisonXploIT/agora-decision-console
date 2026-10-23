@@ -10,9 +10,10 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg?v=3">
   <link rel="shortcut icon" type="image/svg+xml" href="favicon.svg?v=3">
   <link rel="apple-touch-icon" href="favicon.svg?v=3">
-  <link rel="stylesheet" href="styles.css?v=8">
+  <link rel="stylesheet" href="styles.css?v=9">
 </head>
 <body>
+  <a class="skip" href="#main">Saltar al contenido</a>
   <header class="top">
     <div class="brand">
       <div class="marca">
@@ -28,7 +29,13 @@
     </div>
   </header>
 
-  <main class="grid">
+  <nav class="tabs" role="tablist" aria-label="Vistas">
+    <button class="tab active" type="button" role="tab" data-vista="decidir" aria-selected="true" aria-controls="vista-decidir">Decidir</button>
+    <button class="tab" type="button" role="tab" data-vista="modelos" aria-selected="false" aria-controls="vista-modelos">Modelos</button>
+  </nav>
+
+  <main id="main">
+    <div id="vista-decidir" class="vista grid">
     <section class="panel">
       <h2>Entrada</h2>
 
@@ -39,7 +46,7 @@
             <option value="SOC">SOC-SIEM</option>
           </select>
         </label>
-        <label>Pack
+        <label title="Plantilla de preguntas tipadas de la parte elegida">Pack
           <select id="pack"></select>
         </label>
         <label>Backend
@@ -78,35 +85,38 @@
     </section>
 
     <section class="panel">
-      <h2>Resultado <span id="salida-estado" class="muted"></span></h2>
+      <h2>Resultado <span id="salida-estado" class="muted" role="status" aria-live="polite"></span></h2>
       <div id="tarjetas" class="tarjetas">
         <p class="vacio">Elige parte, pack y estado, y pulsa Decidir.</p>
       </div>
 
       <details class="traza">
-        <summary>Traza (contrato: backend, modelo y orden canonico)</summary>
+        <summary title="Backend, modelo, latencia y orden canonico de criterios">Traza (backend, modelo y orden canonico)</summary>
         <pre id="traza">(sin traza todavia)</pre>
       </details>
     </section>
 
+    </div>
+
+    <div id="vista-modelos" class="vista grid hidden">
     <section class="panel span2">
       <h2>Modelos de decision <span class="muted">local o API</span></h2>
       <h3 class="sec">Servidores locales <span class="muted">(arrancar / parar desde aqui)</span></h3>
       <div id="servidores" class="modelos"></div>
       <h3 class="sec">Configurados</h3>
       <div id="lista-backends" class="modelos"></div>
-      <div class="fila" style="margin-top:12px">
+      <div class="fila mt">
         <label>Modelo
           <select id="m-preset"></select>
         </label>
         <label>Nombre
-          <input id="m-nombre" type="text" placeholder="laya" style="font-family:var(--mono)">
+          <input id="m-nombre" type="text" placeholder="laya" class="mono">
         </label>
         <label class="grow">URL base
-          <input id="m-url" type="text" placeholder="http://127.0.0.1:8787" style="font-family:var(--mono)">
+          <input id="m-url" type="text" placeholder="http://127.0.0.1:8787" class="mono">
         </label>
         <label class="grow" id="m-key-label">Clave (solo cloud / API)
-          <input id="m-key" type="password" placeholder="JEV u otra API" style="font-family:var(--mono)">
+          <input id="m-key" type="password" placeholder="JEV u otra API" class="mono">
         </label>
       </div>
       <div class="fila acciones">
@@ -116,8 +126,20 @@
       <p class="muted">Los modelos locales (LAYAA, Eikos-4B) no usan clave: apuntan a su servidor local.
       Los cloud (JEV) si, y la clave se guarda en tu perfil (nunca en el repo).</p>
     </section>
+    </div>
   </main>
 
-  <script src="app.js?v=7"></script>
+  <dialog id="confirm" class="dialogo" aria-labelledby="confirm-title">
+    <form method="dialog">
+      <h2 id="confirm-title">Confirmar</h2>
+      <p id="confirm-text"></p>
+      <div class="dialogo-acciones">
+        <button class="ghost" value="cancel" type="submit">Cancelar</button>
+        <button class="danger" value="ok" type="submit">Continuar</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="app.js?v=8"></script>
 </body>
 </html>

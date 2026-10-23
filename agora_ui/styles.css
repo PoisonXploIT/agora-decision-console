@@ -199,3 +199,72 @@ button.ghost:hover { border-color: var(--acento); color: var(--acento); }
 .modelo .badge.local { color: var(--ok); border-color: rgba(63,185,80,.4); }
 .modelo .badge.cloud { color: var(--aviso); border-color: rgba(210,153,34,.4); }
 .modelo .quitar { background: transparent; color: var(--error); border-color: rgba(248,81,73,.4); padding: 5px 10px; }
+
+/* ---------------------------------------------------------------- mejoras UI */
+
+.skip {
+  position: absolute; left: 12px; top: -60px; z-index: 50;
+  padding: 9px 13px; border-radius: 8px;
+  background: var(--acento); color: #08131c; font-weight: 700; text-decoration: none;
+}
+.skip:focus { top: 12px; }
+
+.hidden { display: none !important; }
+.mono { font-family: var(--mono); }
+.mt { margin-top: 12px; }
+
+/* foco visible en TODO control (antes solo select/textarea) */
+a:focus-visible, button:focus-visible, input:focus-visible,
+select:focus-visible, textarea:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* pestanas */
+.tabs { display: flex; gap: 6px; padding: 12px 24px 0; }
+.tab {
+  border: 1px solid var(--linea); border-radius: 999px;
+  background: transparent; color: var(--muted);
+  padding: 7px 14px; font: 600 13px/1 var(--sans, system-ui);
+  cursor: pointer;
+}
+.tab:hover { color: var(--texto); }
+.tab.active { color: #08131c; background: linear-gradient(90deg, var(--acento), var(--acento2)); border-color: transparent; }
+
+/* el header puede envolver: era lo que forzaba 569 px en movil */
+.top { flex-wrap: wrap; }
+.brand { min-width: 0; }
+.brand .sub { overflow-wrap: anywhere; }
+
+/* la rejilla nunca debe imponer ancho a sus hijos */
+.grid > * { min-width: 0; }
+.panel { min-width: 0; }
+pre { max-width: 100%; overflow: auto; }
+
+/* dialogo de confirmacion */
+.dialogo {
+  border: 1px solid var(--linea); border-radius: 14px;
+  background: var(--panel); color: var(--texto);
+  padding: 20px 22px; max-width: 430px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.55);
+}
+.dialogo::backdrop { background: rgba(0, 0, 0, 0.55); }
+.dialogo h2 { margin: 0 0 8px; font-size: 15px; text-transform: none; letter-spacing: 0; color: var(--texto); }
+.dialogo p { margin: 0 0 16px; color: var(--muted); font-size: 13px; }
+.dialogo-acciones { display: flex; justify-content: flex-end; gap: 8px; }
+.dialogo .danger { border-color: var(--error); color: var(--error); background: transparent; }
+
+@media (max-width: 760px) {
+  .top { padding: 12px 14px; }
+  .marca .logo { width: 28px; height: 28px; }
+  .brand h1 { font-size: 22px; letter-spacing: 4px; }
+  .chips { width: 100%; }
+  .tabs { padding: 10px 14px 0; }
+  .grid { padding: 12px 12px 32px; gap: 12px; }
+  .panel { padding: 14px; }
+  .fila label { flex: 1 1 100%; }
+  .fila input, .fila select { width: 100%; }
+  .fila-prob { grid-template-columns: minmax(84px, 40%) 1fr 48px; }
+  .modelo { flex-wrap: wrap; }
+}
