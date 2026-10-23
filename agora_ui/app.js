@@ -528,6 +528,17 @@ function initTabs() {
 
 let intervaloEstado = null;
 
+async function marcarServicio() {
+  try {
+    await jsonFetch("/health");
+    chip("chip-servicio", "servicio OK", "ok");
+    $("chip-servicio").title = "comprobado a las " + new Date().toLocaleTimeString("es-ES");
+  } catch (e) {
+    chip("chip-servicio", "servicio caido", "err");
+    $("chip-servicio").title = String(e.message || e);
+  }
+}
+
 async function refrescarEstado() {
   try {
     await jsonFetch("/health");
@@ -551,6 +562,7 @@ function initPolling() {
 document.addEventListener("DOMContentLoaded", async () => {
   initTabs();
   chip("chip-parte", $("parte").value);
+  marcarServicio();  // el chip responde antes de que cargue el catalogo (probes lentos)
   try {
     await cargarBackends();
     await cargarPacks();
