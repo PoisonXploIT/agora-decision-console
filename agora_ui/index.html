@@ -10,7 +10,7 @@
   <link rel="icon" type="image/svg+xml" href="favicon.svg?v=3">
   <link rel="shortcut icon" type="image/svg+xml" href="favicon.svg?v=3">
   <link rel="apple-touch-icon" href="favicon.svg?v=3">
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
   <a class="skip" href="#main">Saltar al contenido</a>
@@ -32,6 +32,7 @@
   <nav class="tabs" role="tablist" aria-label="Vistas">
     <button class="tab active" type="button" role="tab" data-vista="decidir" aria-selected="true" aria-controls="vista-decidir">Decidir</button>
     <button class="tab" type="button" role="tab" data-vista="modelos" aria-selected="false" aria-controls="vista-modelos">Modelos</button>
+    <button class="tab" type="button" role="tab" data-vista="historial" aria-selected="false" aria-controls="vista-historial">Historial</button>
   </nav>
 
   <main id="main">
@@ -64,6 +65,7 @@
         <button id="informe" class="ghost" type="button">Informe PDF</button>
         <label class="check"><input type="checkbox" id="comparar"> comparar backends</label>
         <button id="decidir" class="primary" type="button">Decidir</button>
+        <button id="cancelar-cmp" class="quitar hidden" type="button">Cancelar comparacion</button>
       </div>
 
       <h3 class="sec">Pregunta desde texto <span class="muted">(la genera un LLM de chat local, no el modelo de decision)</span></h3>
@@ -71,6 +73,11 @@
         <textarea id="nl" rows="2" spellcheck="false"
           placeholder="ej: clasifica un comando bash en seguro, dudoso o peligroso"></textarea>
       </label>
+      <div class="fila acciones ejemplos" id="nl-ejemplos">
+        <button class="ghost chip-ej" type="button" data-ej="Clasifica un comando bash en seguro, dudoso o peligroso">comando</button>
+        <button class="ghost chip-ej" type="button" data-ej="Decide si este correo es phishing, spam o legitimo">phishing</button>
+        <button class="ghost chip-ej" type="button" data-ej="Elige el modelo mas adecuado para una pregunta de matematicas con codigo">routing</button>
+      </div>
       <div class="fila acciones">
         <button id="generar" class="ghost" type="button">Generar pregunta</button>
         <label class="check"><input type="checkbox" id="usar-manual"> usar pregunta manual</label>
@@ -125,9 +132,64 @@
       </div>
       <p class="muted">Los modelos locales (LAYAA, Eikos-4B) no usan clave: apuntan a su servidor local.
       Los cloud (JEV) si, y la clave se guarda en tu perfil (nunca en el repo).</p>
+
+      <details class="registro" id="logs-box">
+        <summary>Registro del servicio</summary>
+        <div class="fila acciones">
+          <button id="logs-refresh" class="ghost" type="button">Actualizar</button>
+          <span class="muted" id="logs-msg"></span>
+        </div>
+        <pre id="logs" class="logs">(sin lineas todavia)</pre>
+      </details>
     </section>
     </div>
+
+    <div id="vista-historial" class="vista grid hidden">
+      <section class="panel span2">
+        <h2>Historial <span class="muted" id="hist-count">—</span></h2>
+        <div class="fila acciones">
+          <button id="hist-refresh" class="ghost" type="button">Actualizar</button>
+          <button id="hist-csv" class="ghost" type="button">Exportar CSV</button>
+          <button id="hist-clear" class="quitar" type="button">Vaciar historial</button>
+          <span class="muted" id="hist-msg"></span>
+        </div>
+        <div class="tabla-wrap">
+          <table class="tabla" id="hist-table">
+            <caption class="sr-only">Historial de decisiones</caption>
+            <thead>
+              <tr>
+                <th scope="col">Hora</th>
+                <th scope="col">Pregunta</th>
+                <th scope="col">Backend</th>
+                <th scope="col">Veredicto</th>
+                <th scope="col" class="num">Latencia</th>
+                <th scope="col">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="hist-body"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   </main>
+
+  <dialog id="report-dialog" class="dialogo" aria-labelledby="rep-title">
+    <form method="dialog">
+      <h2 id="rep-title">Informe PDF</h2>
+      <label>Pack
+        <select id="rep-pack"></select>
+      </label>
+      <fieldset class="checks">
+        <legend>Backends</legend>
+        <div id="rep-backends"></div>
+      </fieldset>
+      <p class="muted" id="rep-preview">Calculando resumen...</p>
+      <div class="dialogo-acciones">
+        <button class="ghost" value="cancel" type="submit">Cancelar</button>
+        <button id="rep-download" class="primary" value="ok" type="submit">Descargar PDF</button>
+      </div>
+    </form>
+  </dialog>
 
   <dialog id="confirm" class="dialogo" aria-labelledby="confirm-title">
     <form method="dialog">
@@ -140,6 +202,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=9"></script>
+  <script src="app.js?v=10"></script>
 </body>
 </html>

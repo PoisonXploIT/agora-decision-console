@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import time
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +33,7 @@ from agora_core.schemas import (  # noqa: F401
     DecisionRequest,
     Question,
 )
-from agora_serve import security
+from agora_serve import logging_setup, security
 
 
 class DecideBody(BaseModel):
@@ -61,6 +63,10 @@ class BackendConfig(BaseModel):
         if v is None or not str(v).strip():
             return None
         return security.validate_backend_url(str(v))
+
+
+class ReplayBody(BaseModel):
+    backend: str | None = Field(default=None, max_length=40)
 
 
 class StopBody(BaseModel):
@@ -131,6 +137,20 @@ CATALOG = [
 
 MAX_RUNS = 200
 MAX_STATE_BYTES = 64_000
+MAX_STORED_STATE_BYTES = 8_000
+
+
+def _stored_state(state: Any) -> Any:
+    """Estado que se guarda para replay: solo si es pequeno."""
+    try:
+        blob = json.dumps(state, ensure_ascii=False).encode("utf-8")
+    except (TypeError, ValueError):
+        return None
+    return state if len(blob) <= MAX_STORED_STATE_BYTES else None
+
+
+def _new_run_id() -> str:
+    return uuid.uuid4().hex[:12]
 
 
 def _check_state_size(state: Any) -> None:
@@ -152,6 +172,8 @@ def _push_run(runs: list[dict], item: dict) -> None:
 def create_app() -> FastAPI:
     app = FastAPI(title="AGORA", version="0.0.1")
     security.install(app)
+    logging_setup.setup_logging()
+    app.state.log = logging_setup.get_logger()
     registry: dict[str, Any] = {"mock": MockAdapter()}
     runs: list[dict] = []
     from agora_serve import store
@@ -177,10 +199,15 @@ def create_app() -> FastAPI:
 
     # 1) Backends persistidos (los que se configuraron en la UI).
     for cfg in store.load():
+        nombre = str(cfg.get("name") or "").strip().lower()
         try:
-            registry[cfg["name"].strip().lower()] = build(cfg)
-        except Exception:  # noqa: BLE001
-            pass
+            if not re.match(r"^[a-z0-9][a-z0-9_.-]{0,31}$", nombre):
+                raise ValueError(f"nombre invalido: {nombre!r}")
+            if cfg.get("base_url"):
+                security.validate_backend_url(str(cfg["base_url"]))
+            registry[nombre] = build(cfg)
+        except Exception as e:  # noqa: BLE001
+            app.state.log.warning("backend persistido descartado %s: %s", nombre or "?", e)
 
     # 2) Por entorno: LAYA local activo salvo AGORA_LAYAA=0 (si no esta ya persistido).
     if os.environ.get("AGORA_LAYAA", "1") != "0" and "laya" not in registry:
@@ -327,15 +354,7 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=502, detail=str(e)) from e
         return {"question": q.model_dump(), "generado_por": chat_info()}
 
-    @app.post("/v1/report")
-    def report(body: ReportBody):
-        """Informe PDF de un pack (o preguntas sueltas) sobre varios backends."""
-        from datetime import datetime
-
-        from fastapi.responses import Response
-
-        from agora_serve.report import build_pdf
-
+    def _resolve_questions(body: ReportBody) -> list[Question]:
         qs: list[Question] = []
         if body.questions:
             qs = [Question.model_validate(x) for x in body.questions]
@@ -351,6 +370,36 @@ def create_app() -> FastAPI:
             ]
         if not qs:
             raise HTTPException(status_code=422, detail="hace falta 'pack' o 'questions'")
+        return qs
+
+    @app.post("/v1/report/preview")
+    def report_preview(body: ReportBody) -> dict:
+        """Resumen de lo que incluiria el informe, sin generar el PDF."""
+        qs = _resolve_questions(body)
+        names = [n.lower() for n in body.backends] if body.backends else list(registry)
+        names = [n for n in names if n in registry]
+        if not names:
+            raise HTTPException(status_code=422, detail="sin backends validos")
+        return {
+            "pack": body.pack,
+            "question_count": len(qs),
+            "backend_count": len(names),
+            "backends": names,
+            "questions": [{"id": q.id, "type": q.type.value, "prompt": q.prompt[:120]}
+                          for q in qs[:20]],
+            "title": body.title or "Informe de decisiones",
+        }
+
+    @app.post("/v1/report")
+    def report(body: ReportBody):
+        """Informe PDF de un pack (o preguntas sueltas) sobre varios backends."""
+        from datetime import datetime
+
+        from fastapi.responses import Response
+
+        from agora_serve.report import build_pdf
+
+        qs = _resolve_questions(body)
 
         names = [n.lower() for n in body.backends] if body.backends else list(registry)
         names = [n for n in names if n in registry]
@@ -397,10 +446,13 @@ def create_app() -> FastAPI:
             backends=names,
             state_label=estado_txt,
         )
+        base = body.pack or body.title or "informe"
+        slug = re.sub(r"[^a-z0-9]+", "-", base.lower()).strip("-")[:40] or "informe"
+        app.state.log.info("report pack=%s q=%d backends=%s", body.pack, len(qs), names)
         return Response(
             content=pdf,
             media_type="application/pdf",
-            headers={"Content-Disposition": 'inline; filename="agora-informe.pdf"'},
+            headers={"Content-Disposition": f'inline; filename="agora-{slug}.pdf"'},
         )
 
     @app.post("/v1/decide", response_model=Decision)
@@ -416,11 +468,16 @@ def create_app() -> FastAPI:
         try:
             decision = registry[name].decide(body)
         except Exception as e:  # noqa: BLE001
+            app.state.log.warning("decide fallo backend=%s: %s", name, e)
             raise HTTPException(status_code=502, detail=str(e)) from e
+        app.state.log.info("decide backend=%s q=%s", name, body.question.id)
         _push_run(runs, {
+            "id": _new_run_id(),
             "ts": time.time(),
             "backend": name,
             "question_id": body.question.id,
+            "question": body.question.model_dump(),
+            "state": _stored_state(body.state),
             "type": decision.type.value,
             "probabilities": dict(decision.probabilities),
             "expected": decision.expected,
@@ -458,15 +515,19 @@ def create_app() -> FastAPI:
                 continue
             results[name] = d
             _push_run(runs, {
+                "id": _new_run_id(),
                 "ts": time.time(),
                 "backend": name,
                 "question_id": question.id,
+                "question": question.model_dump(),
+                "state": _stored_state(body.state),
                 "type": d.type.value,
                 "probabilities": dict(d.probabilities),
                 "expected": d.expected,
                 "action": d.action,
                 "latency_ms": 0.0,
             })
+        app.state.log.info("compare backends=%s ok=%d err=%d", names, len(results), len(errors))
         if not results:
             raise HTTPException(status_code=502, detail={"errors": errors})
         return {
@@ -489,11 +550,61 @@ def create_app() -> FastAPI:
     def get_runs(limit: int = 50) -> dict:
         return {"count": len(runs), "runs": runs[-max(1, limit):]}
 
+    @app.delete("/v1/runs/{run_id}")
+    def delete_run(run_id: str) -> dict:
+        for i, r in enumerate(runs):
+            if r.get("id") == run_id:
+                runs.pop(i)
+                app.state.log.info("run borrado %s", run_id)
+                return {"ok": True, "deleted": run_id, "count": len(runs)}
+        raise HTTPException(status_code=404, detail=f"run desconocido: {run_id}")
+
     @app.delete("/v1/runs")
     def clear_runs() -> dict:
         n = len(runs)
         runs.clear()
+        app.state.log.warning("historial vaciado (%d runs)", n)
         return {"cleared": n}
+
+    @app.post("/v1/runs/{run_id}/replay", response_model=Decision)
+    def replay_run(run_id: str, body: ReplayBody) -> Decision:
+        """Repite una decision guardada con el backend original o el indicado."""
+        row = next((r for r in runs if r.get("id") == run_id), None)
+        if row is None:
+            raise HTTPException(status_code=404, detail=f"run desconocido: {run_id}")
+        q = row.get("question")
+        if not q:
+            raise HTTPException(status_code=409,
+                                detail="este run no guardo la pregunta (estado grande o version antigua)")
+        name = (body.backend or row.get("backend") or "mock").lower()
+        if name not in registry:
+            raise HTTPException(status_code=404, detail=f"backend desconocido: {name}")
+        req = DecisionRequest(state=row.get("state") or {},
+                              question=Question.model_validate(q), backend=name)
+        try:
+            d = registry[name].decide(req)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=502, detail=str(e)) from e
+        _push_run(runs, {
+            "id": _new_run_id(),
+            "ts": time.time(),
+            "backend": name,
+            "question_id": req.question.id,
+            "question": req.question.model_dump(),
+            "state": _stored_state(req.state),
+            "type": d.type.value,
+            "probabilities": dict(d.probabilities),
+            "expected": d.expected,
+            "action": d.action,
+            "latency_ms": round(float(d.trace.latency_ms or 0.0), 3),
+            "replay_of": run_id,
+        })
+        app.state.log.info("replay %s backend=%s", run_id, name)
+        return d
+
+    @app.get("/v1/logs")
+    def logs(lines: int = 80) -> dict:
+        return {"lines": logging_setup.tail(max(1, min(500, lines)))}
 
     ui_dir = Path(__file__).resolve().parent.parent / "agora_ui"
     if ui_dir.is_dir():
