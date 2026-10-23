@@ -33,7 +33,7 @@ from agora_core.schemas import (  # noqa: F401
     DecisionRequest,
     Question,
 )
-from agora_serve import logging_setup, security
+from agora_serve import integrations, logging_setup, runs_db, security
 
 
 class DecideBody(BaseModel):
@@ -63,6 +63,12 @@ class BackendConfig(BaseModel):
         if v is None or not str(v).strip():
             return None
         return security.validate_backend_url(str(v))
+
+
+class PackBody(BaseModel):
+    pack: str = Field(min_length=1, max_length=80)
+    state: Any = None
+    backends: list[str] | None = Field(default=None, max_length=10)
 
 
 class ReplayBody(BaseModel):
@@ -135,7 +141,6 @@ CATALOG = [
 ]
 
 
-MAX_RUNS = 200
 MAX_STATE_BYTES = 64_000
 MAX_STORED_STATE_BYTES = 8_000
 
@@ -163,10 +168,21 @@ def _check_state_size(state: Any) -> None:
                             detail=f"state demasiado grande ({len(blob)} bytes; max {MAX_STATE_BYTES})")
 
 
-def _push_run(runs: list[dict], item: dict) -> None:
-    runs.append(item)
-    if len(runs) > MAX_RUNS:
-        del runs[: len(runs) - MAX_RUNS]
+def _decision_event(backend: str, question: Any, decision: Any) -> dict:
+    return {
+        "backend": backend,
+        "question_id": getattr(question, "id", None),
+        "type": getattr(getattr(decision, "type", None), "value", None),
+        "probabilities": dict(getattr(decision, "probabilities", {}) or {}),
+        "expected": getattr(decision, "expected", None),
+        "action": getattr(decision, "action", None),
+        "latency_ms": getattr(getattr(decision, "trace", None), "latency_ms", None),
+    }
+
+
+def _save_run(item: dict) -> None:
+    """Guarda una decision en el historial SQLite."""
+    runs_db.insert(item)
 
 
 def create_app() -> FastAPI:
@@ -175,7 +191,6 @@ def create_app() -> FastAPI:
     logging_setup.setup_logging()
     app.state.log = logging_setup.get_logger()
     registry: dict[str, Any] = {"mock": MockAdapter()}
-    runs: list[dict] = []
     from agora_serve import store
 
     def build(cfg: dict) -> Any:
@@ -234,7 +249,6 @@ def create_app() -> FastAPI:
         registry[name] = adapter
 
     app.state.registry = registry
-    app.state.runs = runs
 
     @app.get("/health")
     def health() -> dict:
@@ -449,6 +463,7 @@ def create_app() -> FastAPI:
         base = body.pack or body.title or "informe"
         slug = re.sub(r"[^a-z0-9]+", "-", base.lower()).strip("-")[:40] or "informe"
         app.state.log.info("report pack=%s q=%d backends=%s", body.pack, len(qs), names)
+        integrations.emit("report", {"pack": body.pack, "questions": len(qs), "backends": names})
         return Response(
             content=pdf,
             media_type="application/pdf",
@@ -471,7 +486,8 @@ def create_app() -> FastAPI:
             app.state.log.warning("decide fallo backend=%s: %s", name, e)
             raise HTTPException(status_code=502, detail=str(e)) from e
         app.state.log.info("decide backend=%s q=%s", name, body.question.id)
-        _push_run(runs, {
+        integrations.emit("decide", _decision_event(name, body.question, decision))
+        _save_run({
             "id": _new_run_id(),
             "ts": time.time(),
             "backend": name,
@@ -514,7 +530,7 @@ def create_app() -> FastAPI:
                 errors[name] = str(e)
                 continue
             results[name] = d
-            _push_run(runs, {
+            _save_run({
                 "id": _new_run_id(),
                 "ts": time.time(),
                 "backend": name,
@@ -528,6 +544,12 @@ def create_app() -> FastAPI:
                 "latency_ms": 0.0,
             })
         app.state.log.info("compare backends=%s ok=%d err=%d", names, len(results), len(errors))
+        integrations.emit("compare", {
+            "question_id": question.id,
+            "agreement": _agreement(results),
+            "results": {n: _decision_event(n, question, d) for n, d in results.items()},
+            "errors": errors,
+        })
         if not results:
             raise HTTPException(status_code=502, detail={"errors": errors})
         return {
@@ -536,6 +558,47 @@ def create_app() -> FastAPI:
             "errors": errors,
             "agreement": _agreement(results),
         }
+
+    @app.post("/v1/decide/pack")
+    def decide_pack(body: PackBody) -> dict:
+        """Decisiones de todas las preguntas de un pack. Pensado para integraciones."""
+        _check_state_size(body.state)
+        qs = _resolve_questions(ReportBody(pack=body.pack, state=body.state))
+        names = [n.lower() for n in body.backends] if body.backends else list(registry)
+        names = [n for n in names if n in registry]
+        if not names:
+            raise HTTPException(status_code=422, detail="sin backends validos")
+        state = body.state if body.state is not None else {}
+        out = []
+        errors: dict[str, str] = {}
+        for q in qs:
+            by = {}
+            for n in names:
+                req = DecisionRequest(state=state, question=q, backend=n)
+                try:
+                    d = registry[n].decide(req)
+                except Exception as e:  # noqa: BLE001
+                    errors[f"{q.id}/{n}"] = str(e)
+                    by[n] = {"error": str(e)}
+                    continue
+                by[n] = _decision_event(n, q, d)
+                _save_run({"id": _new_run_id(), "ts": time.time(), "backend": n,
+                           "question_id": q.id, "question": q.model_dump(),
+                           "state": _stored_state(state), "type": d.type.value,
+                           "probabilities": dict(d.probabilities),
+                           "expected": d.expected, "action": d.action,
+                           "latency_ms": float(d.trace.latency_ms or 0.0)})
+            out.append({"question_id": q.id, "prompt": q.prompt, "type": q.type.value,
+                        "by_backend": by})
+        app.state.log.info("pack %s q=%d backends=%s", body.pack, len(qs), names)
+        integrations.emit("decide", {"pack": body.pack, "questions": len(qs),
+                                     "backends": names, "errors": errors})
+        return {"pack": body.pack, "backends": names, "results": out, "errors": errors}
+
+    @app.get("/v1/integrations")
+    def integrations_status() -> dict:
+        return {"webhooks": integrations.status(),
+                "api_keys": len(security.api_keys())}
 
     @app.get("/v1/packs")
     def packs() -> dict:
@@ -547,29 +610,27 @@ def create_app() -> FastAPI:
         return {"packs": [p.model_dump() for p in list_packs()]}
 
     @app.get("/v1/runs")
-    def get_runs(limit: int = 50) -> dict:
-        return {"count": len(runs), "runs": runs[-max(1, limit):]}
+    def get_runs(limit: int = 50, offset: int = 0, backend: str | None = None) -> dict:
+        total, items = runs_db.list_runs(limit=limit, offset=offset, backend=backend)
+        return {"count": total, "runs": items}
 
     @app.delete("/v1/runs/{run_id}")
     def delete_run(run_id: str) -> dict:
-        for i, r in enumerate(runs):
-            if r.get("id") == run_id:
-                runs.pop(i)
-                app.state.log.info("run borrado %s", run_id)
-                return {"ok": True, "deleted": run_id, "count": len(runs)}
-        raise HTTPException(status_code=404, detail=f"run desconocido: {run_id}")
+        if not runs_db.delete(run_id):
+            raise HTTPException(status_code=404, detail=f"run desconocido: {run_id}")
+        app.state.log.info("run borrado %s", run_id)
+        return {"ok": True, "deleted": run_id, "count": runs_db.count()}
 
     @app.delete("/v1/runs")
     def clear_runs() -> dict:
-        n = len(runs)
-        runs.clear()
+        n = runs_db.clear()
         app.state.log.warning("historial vaciado (%d runs)", n)
         return {"cleared": n}
 
     @app.post("/v1/runs/{run_id}/replay", response_model=Decision)
     def replay_run(run_id: str, body: ReplayBody) -> Decision:
         """Repite una decision guardada con el backend original o el indicado."""
-        row = next((r for r in runs if r.get("id") == run_id), None)
+        row = runs_db.get(run_id)
         if row is None:
             raise HTTPException(status_code=404, detail=f"run desconocido: {run_id}")
         q = row.get("question")
@@ -585,7 +646,7 @@ def create_app() -> FastAPI:
             d = registry[name].decide(req)
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=502, detail=str(e)) from e
-        _push_run(runs, {
+        _save_run({
             "id": _new_run_id(),
             "ts": time.time(),
             "backend": name,
@@ -600,6 +661,7 @@ def create_app() -> FastAPI:
             "replay_of": run_id,
         })
         app.state.log.info("replay %s backend=%s", run_id, name)
+        integrations.emit("replay", {"replay_of": run_id, **_decision_event(name, req.question, d)})
         return d
 
     @app.get("/v1/logs")

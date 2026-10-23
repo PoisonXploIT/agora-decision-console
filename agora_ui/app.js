@@ -593,6 +593,7 @@ async function refrescarEstado() {
   }
   try { await cargarBackends(); } catch (e) { /* el chip ya lo indica */ }
   try { await cargarCatalogo(false); } catch (e) { /* sin catalogo */ }
+  cargarIntegraciones();
 }
 
 function initPolling() {
@@ -745,6 +746,21 @@ async function vaciarHistorial() {
   }
 }
 
+async function cargarIntegraciones() {
+  try {
+    const d = await jsonFetch("/v1/integrations");
+    const hooks = (d.webhooks || []).filter((w) => w.enabled).length;
+    const total = (d.webhooks || []).length;
+    const claves = d.api_keys || 0;
+    $("integraciones").textContent =
+      `integraciones: ${hooks} webhook(s) activo(s)` +
+      (total > hooks ? ` (${total - hooks} desactivado)` : "") +
+      ` · ${claves} clave(s) de servicio`;
+  } catch (e) {
+    $("integraciones").textContent = "integraciones: —";
+  }
+}
+
 async function cargarLogs() {
   try {
     const d = await jsonFetch("/v1/logs?lines=120");
@@ -867,6 +883,7 @@ document.addEventListener("DOMContentLoaded", () => {
   cargarBackends().catch((e) => { $("traza").textContent = String(e); });
   cargarPacks().catch((e) => { $("traza").textContent = String(e); });
   cargarCatalogo(true).catch((e) => { $("traza").textContent = String(e); });
+  cargarIntegraciones();
   initPolling();
 });
 

@@ -94,6 +94,22 @@ Fuera del repositorio, en tu perfil:
 
 El directorio se puede cambiar con `AGORA_CONFIG_DIR`.
 
+## Integraciones (AGORA como motor de decisiones)
+
+Otras herramientas pueden pedir decisiones por HTTP sin conocer el contrato interno:
+
+- `Authorization: Bearer <clave>` con `AGORA_API_KEYS` (claves de servicio; no
+  administran backends ni borran historial).
+- `POST /v1/decide/pack` con `{pack, state, backends}` devuelve una decision por
+  pregunta del pack.
+- Webhooks de salida (`decide`, `compare`, `replay`, `report`) configurados en
+  `~/.agora/integrations.json`, con politica `http` solo loopback y `https` solo
+  hosts permitidos.
+- Historial persistente en SQLite (`~/.agora/runs.db`), consultable con
+  `GET /v1/runs`.
+
+Detalle, ejemplos y cliente Python en [`integrations/`](integrations/README.md).
+
 ## Seguridad
 
 - El servicio escucha solo en `127.0.0.1`.

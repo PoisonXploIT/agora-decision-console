@@ -60,6 +60,12 @@ def allowed_api_hosts() -> set[str]:
     return DEFAULT_API_HOSTS | {h.strip().lower() for h in extra.split(",") if h.strip()}
 
 
+def api_keys() -> set[str]:
+    """Claves de servicio para otras herramientas (Authorization: Bearer)."""
+    raw = os.environ.get("AGORA_API_KEYS", "")
+    return {k.strip() for k in raw.split(",") if k.strip()}
+
+
 def auth_enabled() -> bool:
     return os.environ.get("AGORA_AUTH", "on").strip().lower() not in ("off", "0", "false")
 
@@ -156,6 +162,17 @@ def _presented_token(request: Request) -> str:
     return (request.headers.get(HEADER) or request.cookies.get(COOKIE) or "").strip()
 
 
+def apikey_allowed(method: str, path: str) -> bool:
+    """Que puede hacer una clave de servicio: decidir y leer, nunca administrar."""
+    if method == "GET" and path.startswith("/v1/") and path != "/v1/logs":
+        return True
+    if method == "POST" and path in ("/v1/decide", "/v1/decide/compare",
+                                     "/v1/decide/pack", "/v1/questions/from-text"):
+        return True
+    return bool(method == "POST" and path.startswith("/v1/runs/")
+                and path.endswith("/replay"))
+
+
 def _needs_token(path: str) -> bool:
     if path in EXEMPT or path.startswith("/ui/"):
         return False
@@ -175,10 +192,14 @@ def install(app) -> None:
         if request.method not in ("GET", "HEAD") and not _origin_ok(request.headers.get("origin")):
             return JSONResponse({"detail": "Origen no permitido"}, status_code=403)
         if auth_enabled() and _needs_token(request.url.path):
-            if not hmac.compare_digest(_presented_token(request), token):
+            ok_session = hmac.compare_digest(_presented_token(request), token)
+            auth = request.headers.get("authorization", "")
+            bearer = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
+            ok_key = bool(bearer) and any(hmac.compare_digest(bearer, k) for k in api_keys())                 and apikey_allowed(request.method, request.url.path)
+            if not (ok_session or ok_key):
                 return JSONResponse(
-                    {"detail": "Falta el token de sesion: recarga /ui/ en el navegador "
-                               "o manda la cabecera X-AGORA-Token"},
+                    {"detail": "Falta credencial: cookie de sesion (X-AGORA-Token) o "
+                               "Authorization: Bearer <clave de servicio>"},
                     status_code=401,
                 )
 
