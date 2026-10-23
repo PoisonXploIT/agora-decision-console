@@ -1,0 +1,44 @@
+{
+  "name": "AGORA - triaje de hallazgo",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agora-triage",
+        "responseMode": "lastNode"
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:8800/v1/decide/pack",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {"name": "Authorization", "value": "Bearer CAMBIA_ESTA_CLAVE"},
+            {"name": "Content-Type", "value": "application/json"}
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ pack: 'finding', state: $json.body, backends: ['laya'] }) }}",
+        "options": {}
+      },
+      "name": "AGORA decide",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4,
+      "position": [480, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [[{"node": "AGORA decide", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {"executionOrder": "v1"},
+  "notes": "Sustituye CAMBIA_ESTA_CLAVE por una de AGORA_API_KEYS. El pack 'finding' tiene las preguntas de triaje SOC."
+}

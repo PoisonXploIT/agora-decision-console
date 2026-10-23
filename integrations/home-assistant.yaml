@@ -1,0 +1,33 @@
+# Home Assistant: usar AGORA como servicio de decision.
+#
+# 1) Copia el bloque `rest_command` en configuration.yaml.
+# 2) Crea un secret con una clave de servicio de AGORA (AGORA_API_KEYS).
+# 3) Llama al servicio desde una automatizacion:
+#      service: rest_command.agora_triage
+#      data: { contenido: "{{ trigger.to_state.attributes.texto }}" }
+#
+# La respuesta queda en el log de HA. Para guardarla, usa un `rest` sensor con
+# `value_template` sobre `results[0].by_backend`.
+
+rest_command:
+  agora_triage:
+    url: "http://127.0.0.1:8800/v1/decide/pack"
+    method: POST
+    headers:
+      Authorization: !secret agora_api_key
+      Content-Type: application/json
+    payload: >-
+      {"pack": "injection.precheck",
+       "state": {"contenido": "{{ contenido }}"},
+       "backends": ["laya"]}
+    content_type: "application/json"
+
+# Alternativa de solo lectura: ultimas decisiones (requiere clave de servicio).
+sensor:
+  - platform: rest
+    name: "AGORA ultimas decisiones"
+    resource: "http://127.0.0.1:8800/v1/runs?limit=1"
+    headers:
+      Authorization: !secret agora_api_key
+    value_template: "{{ value_json.count }}"
+    scan_interval: 300

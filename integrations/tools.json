@@ -1,0 +1,59 @@
+{
+  "$comment": "Esquema de herramientas de AGORA para function-calling (OpenAI/Anthropic/MCP). Generado a partir de agora_mcp/tools.py.",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "agora_decide",
+        "description": "Evalua un pack de AGORA contra un estado y devuelve una decision tipada por pregunta (probabilidades y veredicto).",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "pack": {"type": "string", "description": "p.ej. injection.precheck, finding, netwatch"},
+            "state": {"type": "object", "description": "estado a evaluar"},
+            "backends": {"type": "array", "items": {"type": "string"}}
+          },
+          "required": ["pack"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "agora_compare",
+        "description": "Compara una pregunta tipada en varios backends de decision.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "question": {"type": "object"},
+            "state": {"type": "object"},
+            "backends": {"type": "array", "items": {"type": "string"}}
+          },
+          "required": ["question"]
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "agora_history",
+        "description": "Ultimas decisiones guardadas en AGORA.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "limit": {"type": "integer", "minimum": 1, "maximum": 200},
+            "backend": {"type": "string"}
+          }
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "agora_packs",
+        "description": "Lista los packs de decision disponibles.",
+        "parameters": {"type": "object", "properties": {}}
+      }
+    }
+  ]
+}

@@ -116,6 +116,13 @@ def cmd_packs(args: argparse.Namespace) -> int:
     return 2
 
 
+def cmd_mcp(_: argparse.Namespace) -> int:
+    """Servidor MCP por stdio para agentes."""
+    from agora_mcp.server import main as mcp_main
+
+    return mcp_main()
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     import uvicorn
 
@@ -148,6 +155,8 @@ def build_parser() -> argparse.ArgumentParser:
     pv = psub.add_parser("validate", help="valida un pack")
     pv.add_argument("path", nargs="?")
     pv.set_defaults(func=cmd_packs)
+
+    sub.add_parser("mcp", help="servidor MCP por stdio (agentes)").set_defaults(func=cmd_mcp)
 
     sp = sub.add_parser("serve", help="arranca el servicio HTTP")
     sp.add_argument("--host", default="127.0.0.1")

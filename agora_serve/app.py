@@ -33,7 +33,7 @@ from agora_core.schemas import (  # noqa: F401
     DecisionRequest,
     Question,
 )
-from agora_serve import integrations, logging_setup, runs_db, security
+from agora_serve import integrations, logging_setup, metrics, runs_db, security
 
 
 class DecideBody(BaseModel):
@@ -483,8 +483,10 @@ def create_app() -> FastAPI:
         try:
             decision = registry[name].decide(body)
         except Exception as e:  # noqa: BLE001
+            metrics.decision(name, False)
             app.state.log.warning("decide fallo backend=%s: %s", name, e)
             raise HTTPException(status_code=502, detail=str(e)) from e
+        metrics.decision(name, True)
         app.state.log.info("decide backend=%s q=%s", name, body.question.id)
         integrations.emit("decide", _decision_event(name, body.question, decision))
         _save_run({
@@ -543,6 +545,7 @@ def create_app() -> FastAPI:
                 "action": d.action,
                 "latency_ms": 0.0,
             })
+        metrics.compare(bool(results))
         app.state.log.info("compare backends=%s ok=%d err=%d", names, len(results), len(errors))
         integrations.emit("compare", {
             "question_id": question.id,
@@ -590,14 +593,28 @@ def create_app() -> FastAPI:
                            "latency_ms": float(d.trace.latency_ms or 0.0)})
             out.append({"question_id": q.id, "prompt": q.prompt, "type": q.type.value,
                         "by_backend": by})
+        metrics.pack()
+        for q in out:
+            for n, res in q["by_backend"].items():
+                metrics.decision(n, "error" not in res)
         app.state.log.info("pack %s q=%d backends=%s", body.pack, len(qs), names)
         integrations.emit("decide", {"pack": body.pack, "questions": len(qs),
                                      "backends": names, "errors": errors})
         return {"pack": body.pack, "backends": names, "results": out, "errors": errors}
 
+    @app.get("/metrics")
+    def metrics_endpoint():
+        """Metricas Prometheus (solo agregados, sin estado ni claves)."""
+        from fastapi.responses import PlainTextResponse
+
+        return PlainTextResponse(metrics.render(runs_db.count()),
+                                 media_type="text/plain; version=0.0.4")
+
     @app.get("/v1/integrations")
     def integrations_status() -> dict:
-        return {"webhooks": integrations.status(),
+        sinks = integrations.status()
+        return {"sinks": sinks,
+                "webhooks": [s for s in sinks if s.get("type") == "webhook"],
                 "api_keys": len(security.api_keys())}
 
     @app.get("/v1/packs")
@@ -660,6 +677,7 @@ def create_app() -> FastAPI:
             "latency_ms": round(float(d.trace.latency_ms or 0.0), 3),
             "replay_of": run_id,
         })
+        metrics.decision(name, True)
         app.state.log.info("replay %s backend=%s", run_id, name)
         integrations.emit("replay", {"replay_of": run_id, **_decision_event(name, req.question, d)})
         return d

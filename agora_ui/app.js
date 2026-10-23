@@ -749,12 +749,13 @@ async function vaciarHistorial() {
 async function cargarIntegraciones() {
   try {
     const d = await jsonFetch("/v1/integrations");
-    const hooks = (d.webhooks || []).filter((w) => w.enabled).length;
-    const total = (d.webhooks || []).length;
+    const sinks = d.sinks || [];
+    const activos = sinks.filter((w) => w.enabled).length;
     const claves = d.api_keys || 0;
+    const tipos = [...new Set(sinks.map((w) => w.type))].join(", ");
     $("integraciones").textContent =
-      `integraciones: ${hooks} webhook(s) activo(s)` +
-      (total > hooks ? ` (${total - hooks} desactivado)` : "") +
+      `integraciones: ${activos} sink(s) activo(s)` +
+      (tipos ? ` (${tipos})` : "") +
       ` · ${claves} clave(s) de servicio`;
   } catch (e) {
     $("integraciones").textContent = "integraciones: —";

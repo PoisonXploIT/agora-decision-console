@@ -108,7 +108,13 @@ Otras herramientas pueden pedir decisiones por HTTP sin conocer el contrato inte
 - Historial persistente en SQLite (`~/.agora/runs.db`), consultable con
   `GET /v1/runs`.
 
+- **Servidor MCP** (`python -m agora_mcp`): herramientas `agora_packs`,
+  `agora_decide`, `agora_compare`, `agora_history` y `agora_health` para agentes.
+- **Sinks** (`webhook`, `jsonl`, `syslog`, `splunk`, `telegram`) y **`/metrics`**
+  Prometheus.
+
 Detalle, ejemplos y cliente Python en [`integrations/`](integrations/README.md).
+Config del servidor MCP en [`agora_mcp/README.md`](agora_mcp/README.md).
 
 ## Seguridad
 
