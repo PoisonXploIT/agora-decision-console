@@ -59,9 +59,20 @@ En `http://127.0.0.1:8800/ui`:
 - **Decidir** por tipo de pregunta, con la distribución y la traza (backend,
   modelo, latencia y orden canónico).
 - **Comparar backends** para ver el mismo caso en varios modelos a la vez.
-- **Pregunta desde texto**: un LLM de chat local (`:8099`) traduce la
+- **Pregunta desde texto**: un LLM de chat local (configurable en la pestaña
+  **Modelos → LLM traductor**, se guarda en `~/.agora/chat.json`) traduce la
   instrucción a la pregunta tipada. Los modelos de decisión no hacen eso: solo
   clasifican sobre opciones ya dadas.
+- **Estado desde texto libre**: `POST /v1/state/from-text` convierte una
+  descripción del caso en el JSON de estado (`comando`, `directorio`, `origen`...).
+  El estado sigue siendo dato, nunca una orden.
+- **Preguntar en lenguaje natural** (`POST /v1/ask`): el LLM compila la pregunta
+  y propone qué backend responde; el código valida la propuesta (backend existente
+  y que soporte el tipo) y aplica un fallback determinista (local primero). Con
+  `mode: "all"` compara todos los candidatos y reporta el acuerdo.
+- **Cualquier LLM local como backend de decisión**: `kind: "chat"` habla con
+  servidores OpenAI-compatible (llama.cpp, Ollama, LM Studio, vLLM) y normaliza
+  su salida a probabilidades canónicas. Botón **probar** en cada backend.
 - **Modelos de decisión**: catálogo (LAYAA, Eikos-4B, JEV, Mock), alta de
   nuevos, y botones **Levantar** / **Detener** que arrancan los servidores
   locales en su propia ventana con logs.
