@@ -241,6 +241,21 @@ def _check_state_size(state: Any) -> None:
                             detail=f"state demasiado grande ({len(blob)} bytes; max {MAX_STATE_BYTES})")
 
 
+def _degenerate_warning(decision: Any) -> str | None:
+    """Distribucion uniforme = el modelo no tuvo datos para juzgar.
+
+    No es un error: es una senal de que el `state` estaba vacio o era demasiado
+    pobre. La UI lo muestra para que no se lea como un veredicto.
+    """
+    probs = list((getattr(decision, "probabilities", {}) or {}).values())
+    if len(probs) < 2:
+        return None
+    if max(probs) - min(probs) <= 1e-6:
+        return (f"distribucion uniforme sobre {len(probs)} criterios: el estado (state) "
+                "esta vacio o no da datos para juzgar")
+    return None
+
+
 def _decision_event(backend: str, question: Any, decision: Any) -> dict:
     return {
         "backend": backend,
@@ -594,6 +609,7 @@ def create_app() -> FastAPI:
                 "compiled_by": chat_info(),
                 "routing": routing,
                 "decisions": [d.model_dump() for d in decisiones if d],
+                "avisos": {d.trace.backend: _degenerate_warning(d) for d in decisiones if d},
                 "errors": {n: True for n, d in zip(elegible, decisiones) if d is None},
                 "acuerdo_argmax": (tops[0] if acuerdo else None),
             }
@@ -638,6 +654,7 @@ def create_app() -> FastAPI:
             "routing": routing,
             "decision": decision.model_dump(),
             "errors": errores,
+            "aviso": _degenerate_warning(decision),
         }
 
     def _resolve_questions(body: ReportBody) -> list[Question]:

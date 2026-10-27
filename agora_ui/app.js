@@ -399,6 +399,7 @@ function tarjetaAsk(data) {
     ${prob}
     ${extra.length ? `<p class="extra">${extra.join(" &nbsp; ")}</p>` : ""}
     <p class="meta muted">responde ${quien} - ${motivo}</p>
+    ${data.aviso ? `<p class="err">${esc(data.aviso)}</p>` : ""}
   </div>`;
 }
 
@@ -429,7 +430,9 @@ async function preguntar() {
       const cols = (d.decisions || []).map((dec) => compColumna(dec.trace.backend, dec, null)).join("");
       $("tarjetas").innerHTML = `<div class="cmp"><h3>${esc(d.question.id)} <span class="muted">${esc(d.question.prompt)}</span></h3>` +
         `<div class="cols">${cols}</div>` +
-        `<p class="acuerdo">acuerdo: <span class="${d.acuerdo_argmax ? "si" : "no"}">${d.acuerdo_argmax ? "si (" + esc(d.acuerdo_argmax) + ")" : "no"}</span></p>`;
+        `<p class="acuerdo">acuerdo: <span class="${d.acuerdo_argmax ? "si" : "no"}">${d.acuerdo_argmax ? "si (" + esc(d.acuerdo_argmax) + ")" : "no"}</span></p>` +
+        Object.entries(d.avisos || {}).filter(([, v]) => v)
+          .map(([k, v]) => `<p class="err">${esc(k)}: ${esc(v)}</p>`).join("");
       $("traza").textContent = JSON.stringify(d.routing, null, 2);
     }
     const cb = d.compiled_by || {};
