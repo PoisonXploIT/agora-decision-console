@@ -53,11 +53,26 @@ def local_models() -> dict[str, Any]:
 
 
 def _probe(url: str, timeout: float = 2.5) -> bool | None:
+    """El servidor esta VIVO si responde 200 con JSON.
+
+    Antes bastaba con cualquier 200-499, y eso daba falso positivo: el buzon de
+    Piloop (8901) redirige a su login y la consola marcaba 'Eikos arriba' cuando
+    Eikos no esta instalado. Un 302 a una pagina HTML, un 404 o un texto plano
+    ya no cuentan.
+    """
     if not url:
         return None
     try:
         with urllib.request.urlopen(url, timeout=timeout) as r:
-            return 200 <= getattr(r, "status", 200) < 500
+            code = getattr(r, "status", 200)
+            if not (200 <= code < 400):
+                return False
+            cuerpo = r.read(2048)
+            try:
+                json.loads(cuerpo)
+                return True
+            except Exception:
+                return False
     except Exception:
         return False
 

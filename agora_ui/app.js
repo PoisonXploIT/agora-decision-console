@@ -100,11 +100,29 @@ function renderModelos() {
       <span class="badge">${esc(b.kind)}</span>
       <span class="url">${esc(b.base_url || "(sin URL)")}</span>
       ${b.name === "mock" ? '<span class="muted">fijo</span>' : `<button class="quitar" data-quitar="${esc(b.name)}" type="button">quitar</button>`}
+      <button class="ghost" data-test="${esc(b.name)}" type="button">probar</button>
+      <span class="muted" data-test-msg="${esc(b.name)}"></span>
     </div>`
   ).join("");
   cont.querySelectorAll("[data-quitar]").forEach((btn) => {
     btn.addEventListener("click", () => delModelo(btn.getAttribute("data-quitar")));
   });
+  cont.querySelectorAll("[data-test]").forEach((btn) => {
+    btn.addEventListener("click", () => probarBackend(btn.getAttribute("data-test")));
+  });
+}
+
+async function probarBackend(name) {
+  const msg = document.querySelector(`[data-test-msg="${name}"]`);
+  if (msg) msg.textContent = "probando...";
+  try {
+    const d = await jsonFetch(`/v1/backends/${encodeURIComponent(name)}/test`, { method: "POST" });
+    if (msg) msg.textContent = d.ok
+      ? `vivo (${d.latency_ms} ms, modelo ${d.model})`
+      : `NO: ${d.error}`;
+  } catch (e) {
+    if (msg) msg.textContent = "error: " + e.message;
+  }
 }
 
 let CATALOG = [];

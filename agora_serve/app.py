@@ -184,6 +184,39 @@ CATALOG = [
 MAX_STATE_BYTES = 64_000
 MAX_STORED_STATE_BYTES = 8_000
 
+# Fichero de entorno del servidor LAYA local (su clave bearer). Se puede apuntar
+# a otro sitio con AGORA_LAYA_ENV. Aqui no se escribe ningun valor: solo se lee.
+LAYA_ENV_DEFAULT = r"C:\Users\Sammi\ai-netwatch\data\laya_serve.env"
+
+
+def _env_key(name: str, base_url: str = "") -> str:
+    """Clave de un backend cloud desde el entorno del usuario.
+
+    Orden: <NOMBRE>_API_KEY, AGORA_API_KEY y, si el host es TypeSafe,
+    TYPESAFE_API_KEY (la variable que Sammi ya tiene definida).
+    """
+    var = (name or "").upper().replace("-", "_").replace(".", "_") + "_API_KEY"
+    for candidate in (var, "AGORA_API_KEY", "TYPESAFE_API_KEY"):
+        value = os.environ.get(candidate, "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _local_key() -> str:
+    """Clave de LAYA: env LAYA_API_KEY o el fichero de entorno del servidor local."""
+    key = os.environ.get("LAYA_API_KEY", "").strip()
+    if key:
+        return key
+    path = Path(os.environ.get("AGORA_LAYA_ENV", LAYA_ENV_DEFAULT))
+    try:
+        for linea in path.read_text(encoding="utf-8").splitlines():
+            if linea.startswith("LAYA_API_KEY="):
+                return linea.split("=", 1)[1].strip()
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
+
 
 def _stored_state(state: Any) -> Any:
     """Estado que se guarda para replay: solo si es pequeno."""
@@ -253,9 +286,17 @@ def create_app() -> FastAPI:
             # LAYA local, JEV API y Eikos serve hablan la misma API compatible TypeSafe.
             from agora_adapters import LayaAdapter
 
+            base = cfg.get("base_url") or "http://127.0.0.1:8787"
+            es_local = "127.0.0.1" in base or "localhost" in base
+            if es_local:
+                key = cfg.get("api_key") or _local_key() or None
+            else:
+                # La clave de un backend cloud se busca PRIMERO en el entorno del usuario
+                # (regla del vault: las claves no se escriben en ficheros).
+                key = _env_key(name, base) or cfg.get("api_key") or None
             adapter = LayaAdapter(
-                base_url=cfg.get("base_url") or "http://127.0.0.1:8787",
-                api_key=cfg.get("api_key") or None,
+                base_url=base,
+                api_key=key,
                 model=cfg.get("model") or None,
             )
         if name:
@@ -395,6 +436,24 @@ def create_app() -> FastAPI:
             adapter.api_key = ""
         store.remove_key(name)
         return {"ok": True, "backends": list(registry)}
+
+    @app.post("/v1/backends/{name}/test")
+    def test_backend(name: str) -> dict:
+        """Prueba real: una decision minima. Devuelve el motivo exacto del fallo."""
+        name = name.strip().lower()
+        if name not in registry:
+            raise HTTPException(status_code=404, detail="backend no registrado")
+        q = Question(id="probe", type="choice", prompt="probe de conectividad",
+                     criteria=["ok", "no"])
+        t0 = time.monotonic()
+        try:
+            d = registry[name].decide(DecisionRequest(state={}, question=q, backend=name))
+            return {"ok": True, "backend": name,
+                    "latency_ms": round((time.monotonic() - t0) * 1000, 1),
+                    "probabilities": dict(d.probabilities), "model": d.trace.model}
+        except Exception as e:  # noqa: BLE001
+            app.state.log.warning("test backend %s: %s", name, e)
+            return {"ok": False, "backend": name, "error": str(e)}
 
     @app.delete("/backends/{name}")
     def del_backend(name: str) -> dict:
