@@ -85,6 +85,37 @@ class FromTextBody(BaseModel):
     type: str | None = Field(default=None, description="tipo preferido: choice | score | noul")
 
 
+class ChatConfigBody(BaseModel):
+    base_url: str = Field(min_length=4, max_length=500,
+                          description="http://127.0.0.1:8080 (base, sin /v1/chat/completions)")
+    model: str | None = Field(default=None, max_length=128)
+    timeout: float | None = Field(default=None, ge=1, le=600)
+
+    @field_validator("base_url")
+    @classmethod
+    def _url(cls, v: str) -> str:
+        return security.validate_backend_url(v)
+
+
+class AskBody(BaseModel):
+    """Pregunta en lenguaje natural: el LLM la compila a JSON tipado y elige quien responde."""
+
+    text: str = Field(min_length=1, max_length=4000)
+    state: Any = None
+    type: str | None = Field(default=None, description="tipo preferido: choice | score | noul")
+    backends: list[str] | None = Field(default=None, max_length=10,
+                                      description="backends candidatos; vacio = todos")
+    mode: str = Field(default="auto", description="auto (elige uno) | all (comparar todos)")
+
+    @field_validator("mode")
+    @classmethod
+    def _mode(cls, v: str) -> str:
+        v = (v or "auto").strip().lower()
+        if v not in ("auto", "all"):
+            raise ValueError("mode debe ser 'auto' o 'all'")
+        return v
+
+
 class ReportBody(BaseModel):
     title: str | None = None
     state: Any = None
@@ -135,6 +166,15 @@ CATALOG = [
         "label": "LLM de chat :8099 (genera el JSON desde texto)",
         "kind": "chat",
         "base_url": "http://127.0.0.1:8099",
+        "needs_key": False,
+        "privacy": "local",
+    },
+    {
+        # Cualquier LLM local compatible con OpenAI, usado como backend de decision.
+        "name": "llm-local",
+        "label": "LLM local (OpenAI-compatible, :8080)",
+        "kind": "chat",
+        "base_url": "http://127.0.0.1:8080",
         "needs_key": False,
         "privacy": "local",
     },
@@ -199,6 +239,16 @@ def create_app() -> FastAPI:
         name = str(cfg.get("name") or "").strip().lower()
         if kind == "mock":
             adapter: Any = MockAdapter()
+        elif kind == "chat":
+            # Cualquier LLM local compatible con OpenAI (llama.cpp, Ollama, LM Studio,
+            # Strata, vLLM) respondiendo preguntas tipadas.
+            from agora_adapters.chat import ChatAdapter
+
+            adapter = ChatAdapter(
+                base_url=cfg.get("base_url") or "http://127.0.0.1:8080",
+                api_key=cfg.get("api_key") or None,
+                model=cfg.get("model") or None,
+            )
         else:
             # LAYA local, JEV API y Eikos serve hablan la misma API compatible TypeSafe.
             from agora_adapters import LayaAdapter
@@ -307,7 +357,7 @@ def create_app() -> FastAPI:
         if not name:
             raise HTTPException(status_code=422, detail="nombre requerido")
         kind = (cfg.kind or "http").strip().lower()
-        if kind not in ("mock", "http", "typesafe", "laya", "eikos", "jev"):
+        if kind not in ("mock", "http", "typesafe", "laya", "eikos", "jev", "chat"):
             raise HTTPException(status_code=422, detail=f"kind desconocido: {kind!r}")
         try:
             adapter = build(
@@ -325,7 +375,7 @@ def create_app() -> FastAPI:
         store.upsert(
             {
                 "name": name,
-                "kind": "mock" if kind == "mock" else "http",
+                "kind": kind if kind in ("mock", "chat") else "http",
                 "base_url": cfg.base_url,
                 "api_key": cfg.api_key,
                 "model": cfg.model,
@@ -367,6 +417,169 @@ def create_app() -> FastAPI:
         except ChatError as e:
             raise HTTPException(status_code=502, detail=str(e)) from e
         return {"question": q.model_dump(), "generado_por": chat_info()}
+
+    # ------------------------------------------------ LLM de chat (el traductor)
+    @app.get("/v1/chat/config")
+    def chat_config_get() -> dict:
+        """Que LLM traduce el lenguaje natural a JSON tipado, y si esta vivo."""
+        from agora_serve import chat_config
+
+        cfg = chat_config.load()
+        return {
+            "config": cfg,
+            "models": chat_config.list_models(cfg["base_url"]),
+            "vivo": chat_config.probe(cfg["base_url"]),
+            "detectados": chat_config.scan(),
+        }
+
+    @app.put("/v1/chat/config")
+    def chat_config_put(body: ChatConfigBody) -> dict:
+        """Configura el LLM de chat desde la UI (se persiste en ~/.agora/chat.json)."""
+        from agora_serve import chat_config
+
+        try:
+            cfg = chat_config.save(body.base_url, body.model, body.timeout)
+        except Exception as e:  # noqa: BLE001
+            raise HTTPException(status_code=422, detail=str(e)) from e
+        app.state.log.info("chat config -> %s model=%s", cfg["url"], cfg["model"] or "(auto)")
+        return {
+            "ok": True,
+            "config": cfg,
+            "models": chat_config.list_models(cfg["base_url"]),
+            "vivo": chat_config.probe(cfg["base_url"]),
+        }
+
+    @app.get("/v1/chat/models")
+    def chat_models(base_url: str | None = None) -> dict:
+        from agora_serve import chat_config
+
+        base = base_url or chat_config.load()["base_url"]
+        return {"base_url": base, "models": chat_config.list_models(base),
+                "vivo": chat_config.probe(base)}
+
+    # ------------------------------------------------ preguntar en lenguaje natural
+    @app.post("/v1/ask")
+    def ask(body: AskBody) -> dict:
+        """Lenguaje natural -> pregunta tipada -> decision determinista.
+
+        El LLM de chat compila la pregunta y sugiere quien responde; el codigo valida
+        la sugerencia (backend existente + tipo soportado) y, si no vale, aplica un
+        fallback determinista: local antes que cloud, mock al final.
+        """
+        from agora_serve.questions import ChatError, chat_info, compile_question
+
+        _check_state_size(body.state)
+        candidatos = [n for n in registry if n != "chat"]
+        if body.backends:
+            candidatos = [n.lower() for n in body.backends if n.lower() in registry]
+            if not candidatos:
+                raise HTTPException(status_code=422, detail="ningun backend candidato existe")
+        fichas = [
+            {"name": n, "kind": registry[n].info().kind,
+             "privacy": registry[n].info().privacy,
+             "supports": [t.value for t in registry[n].info().supports]}
+            for n in candidatos
+        ]
+        try:
+            question, routing = compile_question(body.text, default_type=body.type or "choice",
+                                               backends=fichas)
+        except ChatError as e:
+            raise HTTPException(status_code=502, detail=f"no se pudo compilar la pregunta: {e}") from e
+
+        soporta = {f["name"]: set(f["supports"]) for f in fichas}
+        elegible = [n for n in candidatos if question.type.value in soporta[n]]
+        if not elegible:
+            raise HTTPException(status_code=422,
+                                detail=f"ningun backend soporta el tipo {question.type.value}")
+        # mock es determinista pero FALSO: solo se usa si no hay ningun modelo real.
+        reales = [n for n in elegible if n != "mock"]
+        sugerido = routing["backend"] if routing["backend"] in elegible else None
+        if sugerido == "mock" and reales:
+            sugerido = None
+        elegido = sugerido
+        if elegido is None:
+            locales = [n for n in (reales or elegible) if registry[n].info().privacy == "local"]
+            elegido = locales[0] if locales else (reales[0] if reales else elegible[-1])
+            routing = {"backend": elegido, "motivo": "fallback determinista (local primero)",
+                       "fuente": "codigo"}
+        routing["candidatos"] = elegible
+
+        state = body.state if body.state is not None else {}
+        if body.mode == "all":
+            decisiones = []
+            for n in elegible:
+                req = DecisionRequest(state=state, question=question, backend=n)
+                t0 = time.monotonic()
+                try:
+                    d = registry[n].decide(req)
+                    metrics.decision(n, True)
+                    decisiones.append(d)
+                    _save_run({
+                        "id": _new_run_id(), "ts": time.time(), "backend": n,
+                        "question_id": question.id, "question": question.model_dump(),
+                        "state": _stored_state(state), "type": d.type.value,
+                        "probabilities": dict(d.probabilities), "expected": d.expected,
+                        "action": d.action,
+                        "latency_ms": round((time.monotonic() - t0) * 1000.0, 3),
+                    })
+                except Exception as e:  # noqa: BLE001
+                    metrics.decision(n, False)
+                    decisiones.append(None)
+                    app.state.log.warning("ask fallo backend=%s: %s", n, e)
+            tops = [max(d.probabilities, key=d.probabilities.get) for d in decisiones if d]
+            acuerdo = len(set(tops)) == 1 and len(tops) > 1
+            integrations.emit("ask", {"backend": elegido, "question_id": question.id,
+                                      "mode": "all", "backends": elegible})
+            return {
+                "question": question.model_dump(),
+                "compiled_by": chat_info(),
+                "routing": routing,
+                "decisions": [d.model_dump() for d in decisiones if d],
+                "errors": {n: True for n, d in zip(elegible, decisiones) if d is None},
+                "acuerdo_argmax": (tops[0] if acuerdo else None),
+            }
+
+        req = DecisionRequest(state=state, question=question, backend=elegido)
+        t0 = time.monotonic()
+        order = [elegido] + [n for n in elegible if n != elegido]
+        decision = None
+        errores = {}
+        for n in order:
+            try:
+                decision = registry[n].decide(DecisionRequest(state=state, question=question, backend=n))
+                metrics.decision(n, True)
+                if n != elegido:
+                    routing["backend"] = n
+                    routing["motivo"] = f"{elegido} fallo; se uso {n}"
+                    routing["fuente"] = "fallback"
+                    elegido = n
+                break
+            except Exception as e:  # noqa: BLE001
+                metrics.decision(n, False)
+                errores[n] = str(e)
+                app.state.log.warning("ask fallo backend=%s: %s", n, e)
+        if decision is None:
+            raise HTTPException(status_code=502,
+                                detail=f"ningun backend pudo responder: {errores}")
+        t0 = time.monotonic() - t0
+        metrics.decision(elegido, True)
+        app.state.log.info("ask backend=%s q=%s", elegido, question.id)
+        integrations.emit("ask", _decision_event(elegido, question, decision))
+        _save_run({
+            "id": _new_run_id(), "ts": time.time(), "backend": elegido,
+            "question_id": question.id, "question": question.model_dump(),
+            "state": _stored_state(state), "type": decision.type.value,
+            "probabilities": dict(decision.probabilities), "expected": decision.expected,
+            "action": decision.action,
+            "latency_ms": round((time.monotonic() - t0) * 1000.0, 3),
+        })
+        return {
+            "question": question.model_dump(),
+            "compiled_by": chat_info(),
+            "routing": routing,
+            "decision": decision.model_dump(),
+            "errors": errores,
+        }
 
     def _resolve_questions(body: ReportBody) -> list[Question]:
         qs: list[Question] = []

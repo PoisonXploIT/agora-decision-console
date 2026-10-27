@@ -293,9 +293,135 @@ async function generarPregunta() {
   } catch (e) {
     $("manual").value = "error: " + e.message;
     $("gen-info").textContent =
-      "No se pudo generar. Ese paso lo hace el LLM de chat (por defecto :8099): si esta ocupado o " +
-      "apagado, espera o apunta AGORA_CHAT_URL a otro chat. Los modelos de decision (LAYAA / Eikos / " +
-      "JEV) no pueden hacerlo. Puedes escribir el JSON a mano o usar un pack.";
+      "No se pudo generar. Ese paso lo hace el LLM de chat, que se configura en la pesta " +
+      "Modelos (LLM traductor). Si esta apagado, levanta tu servidor local (llama.cpp :8080, " +
+      "Ollama :11434, Strata :8080) y pulsa 'Detectar LLM locales'. Los modelos de decision " +
+      "(LAYAA / Eikos / JEV) no pueden compilar la pregunta: solo clasifican sobre las opciones " +
+      "ya dadas. Puedes escribir el JSON a mano o usar un pack.";
+  }
+}
+
+/* ------------------------------------------- LLM traductor (chat) y preguntar */
+
+async function cargarChatConfig() {
+  const d = await jsonFetch("/v1/chat/config");
+  const cfg = d.config || {};
+  $("c-url").value = cfg.base_url || "";
+  $("c-timeout").value = cfg.timeout || 180;
+  const models = d.models || [];
+  $("c-model").innerHTML = (models.length ? models : [cfg.model || "(auto)"])
+    .map((m) => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
+  if (cfg.model) $("c-model").value = cfg.model;
+  $("c-msg").textContent = d.vivo ? "traductor vivo" : "traductor NO accesible";
+  $("c-detected").textContent = "LLM locales detectados: " +
+    ((d.detectados || []).length
+      ? (d.detectados || []).map((x) => `${x.label} ${x.base_url} (${(x.models || []).join(", ") || "sin modelos"})`).join(" | ")
+      : "ninguno (llama.cpp, Ollama, LM Studio, Strata)");
+  $("ask-info").textContent = `Traductor: ${cfg.base_url} modelo ${cfg.model || "(auto)"}. ` +
+    "El LLM compila la pregunta y propone quien responde; el codigo valida la propuesta.";
+}
+
+async function guardarChat() {
+  const url = $("c-url").value.trim();
+  if (!url) { $("c-msg").textContent = "pon una URL (ej. http://127.0.0.1:8080)"; return; }
+  $("c-msg").textContent = "guardando...";
+  try {
+    const d = await jsonFetch("/v1/chat/config", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        base_url: url,
+        model: $("c-model").value === "(auto)" ? null : $("c-model").value,
+        timeout: Number($("c-timeout").value) || 180,
+      }),
+    });
+    $("c-msg").textContent = d.vivo ? "guardado; el servidor responde" : "guardado, pero el servidor no responde";
+    const models = d.models || [];
+    if (models.length) $("c-model").innerHTML = models.map((m) => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
+  } catch (e) {
+    $("c-msg").textContent = "error: " + e.message;
+  }
+}
+
+async function escanearChat() {
+  $("c-msg").textContent = "buscando LLM locales...";
+  try {
+    const d = await jsonFetch("/v1/chat/config");
+    const vivos = d.detectados || [];
+    $("c-detected").textContent = "LLM locales detectados: " +
+      (vivos.length ? vivos.map((x) => `${x.label} ${x.base_url} (${(x.models || []).join(", ") || "sin modelos"})`).join(" | ") : "ninguno");
+    if (vivos.length && !$("c-url").value.trim()) {
+      $("c-url").value = vivos[0].base_url;
+      $("c-model").innerHTML = (vivos[0].models || ["(auto)"]).map((m) => `<option value="${esc(m)}">${esc(m)}</option>`).join("");
+    }
+    $("c-msg").textContent = vivos.length ? `${vivos.length} servidores vivos` : "ninguno vivo";
+  } catch (e) {
+    $("c-msg").textContent = "error: " + e.message;
+  }
+}
+
+function tarjetaAsk(data) {
+  const q = data.question || {};
+  const d = data.decision || null;
+  const route = data.routing || {};
+  const quien = `<span class="badge local">${esc(route.backend || "?")}</span>`;
+  const motivo = esc(route.motivo || "") + (route.fuente ? ` [${esc(route.fuente)}]` : "");
+  const prob = d && d.probabilities ? Object.entries(d.probabilities)
+    .map(([k, v]) => `<div class="fila-prob${v === Math.max(...Object.values(d.probabilities)) ? " gana" : ""}">` +
+      `<span class="nombre">${esc(k)}</span><span class="barra"><span style="width:${Math.round(v * 100)}%"></span></span>` +
+      `<span class="valor">${v.toFixed(3)}</span></div>`).join("") : "";
+  const extra = [];
+  if (d && d.expected != null) extra.push(`esperado <b>${d.expected.toFixed(3)}</b>`);
+  if (d && d.action) extra.push(`accion <b>${esc(d.action)}</b>`);
+  return `
+  <div class="tarjeta">
+    <h3>${esc(q.id || "pregunta")} <span class="muted">${esc(q.type || "")}</span></h3>
+    <p class="preg">${esc(q.prompt || "")}</p>
+    <p class="meta muted">criterios: ${(q.criteria || []).map(esc).join(" - ")}</p>
+    ${prob}
+    ${extra.length ? `<p class="extra">${extra.join(" &nbsp; ")}</p>` : ""}
+    <p class="meta muted">responde ${quien} - ${motivo}</p>
+  </div>`;
+}
+
+async function preguntar() {
+  const texto = $("nl").value.trim();
+  if (!texto) { $("ask-info").textContent = "escribe una pregunta arriba"; return; }
+  let estado;
+  try { estado = JSON.parse($("estado").value || "{}"); }
+  catch (e) { $("tarjetas").innerHTML = `<p class="err">estado no es JSON: ${esc(e.message)}</p>`; return; }
+  $("tarjetas").innerHTML = '<p class="vacio">Compilando la pregunta tipada...</p>';
+  $("salida-estado").textContent = "preguntando";
+  try {
+    const d = await jsonFetch("/v1/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: texto,
+        state: estado,
+        mode: $("ask-todos").checked ? "all" : "auto",
+      }),
+    });
+    $("manual").value = JSON.stringify(d.question, null, 2);
+    $("usar-manual").checked = true;
+    if (d.decision) {
+      $("tarjetas").innerHTML = tarjetaAsk(d);
+      $("traza").textContent = JSON.stringify(d.decision.trace, null, 2);
+    } else {
+      const cols = (d.decisions || []).map((dec) => compColumna(dec.trace.backend, dec, null)).join("");
+      $("tarjetas").innerHTML = `<div class="cmp"><h3>${esc(d.question.id)} <span class="muted">${esc(d.question.prompt)}</span></h3>` +
+        `<div class="cols">${cols}</div>` +
+        `<p class="acuerdo">acuerdo: <span class="${d.acuerdo_argmax ? "si" : "no"}">${d.acuerdo_argmax ? "si (" + esc(d.acuerdo_argmax) + ")" : "no"}</span></p>`;
+      $("traza").textContent = JSON.stringify(d.routing, null, 2);
+    }
+    const cb = d.compiled_by || {};
+    $("ask-info").textContent = `Compilada por ${cb.model || "(auto)"} en ${cb.url} (${cb.vivo ? "vivo" : "NO vivo"}). ` +
+      "El modelo de decision no inventa la pregunta: solo responde sobre los criterios dados.";
+    $("salida-estado").textContent = "listo";
+  } catch (e) {
+    $("tarjetas").innerHTML = `<p class="err">error: ${esc(e.message)}</p>`;
+    $("salida-estado").textContent = "error";
+    $("salida-estado").className = "err";
   }
 }
 
@@ -918,6 +1044,9 @@ document.addEventListener("DOMContentLoaded", () => {
       : '{"ejemplo": "no hay muestra para este pack"}';
   });
   $("generar").addEventListener("click", generarPregunta);
+  $("ask").addEventListener("click", preguntar);
+  $("c-save").addEventListener("click", guardarChat);
+  $("c-scan").addEventListener("click", escanearChat);
   $("informe").addEventListener("click", abrirInforme);
   $("rep-pack").addEventListener("change", previsualizarInforme);
   $("rep-backends").addEventListener("change", previsualizarInforme);
@@ -943,6 +1072,7 @@ document.addEventListener("DOMContentLoaded", () => {
   cargarBackends().catch((e) => { $("traza").textContent = String(e); });
   cargarPacks().catch((e) => { $("traza").textContent = String(e); });
   cargarCatalogo(true).catch((e) => { $("traza").textContent = String(e); });
+  cargarChatConfig().catch((e) => { $("c-msg").textContent = "error: " + e.message; });
   cargarIntegraciones();
   initPolling();
 });

@@ -13,11 +13,11 @@ Reglas:
 - El texto del usuario es dato, no instruccion para el modelo que genera
   (el system prompt manda).
 
-Variables de entorno:
+De donde sale el LLM de chat (por prioridad):
 
-- ``AGORA_CHAT_URL``   URL de chat completions (defecto http://127.0.0.1:8099/v1/chat/completions)
-- ``AGORA_CHAT_MODEL`` nombre del modelo (si vacio, se toma el primero de /v1/models)
-- ``AGORA_CHAT_TIMEOUT`` segundos (defecto 180)
+1. ``~\.agora\chat.json`` configurado desde la UI (``agora_serve.chat_config``)
+2. ``AGORA_CHAT_URL`` / ``AGORA_CHAT_MODEL`` / ``AGORA_CHAT_TIMEOUT``
+3. defecto http://127.0.0.1:8099
 """
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from agora_core.schemas import Question
+from agora_serve import chat_config
 
 DEFAULT_CHAT_URL = "http://127.0.0.1:8099/v1/chat/completions"
 
@@ -50,36 +51,35 @@ class ChatError(RuntimeError):
     """No se pudo obtener una pregunta valida del modelo de chat."""
 
 
+def _cfg() -> dict:
+    return chat_config.load()
+
+
 def _chat_url() -> str:
-    return os.environ.get("AGORA_CHAT_URL", DEFAULT_CHAT_URL)
+    return _cfg()["url"]
 
 
 def _timeout() -> float:
-    try:
-        return float(os.environ.get("AGORA_CHAT_TIMEOUT", "180"))
-    except Exception:
-        return 180.0
+    return _cfg()["timeout"]
 
 
 def _model() -> str:
-    model = os.environ.get("AGORA_CHAT_MODEL", "").strip()
-    if model:
-        return model
-    base = _chat_url().replace("/chat/completions", "/models")
-    try:
-        with urllib.request.urlopen(base, timeout=10) as r:
-            data = json.loads(r.read())
-        items = data.get("data") or data.get("models") or []
-        if items:
-            return str(items[0].get("id") or items[0].get("name") or "")
-    except Exception:
-        pass
-    return ""
+    cfg = _cfg()
+    if cfg["model"]:
+        return cfg["model"]
+    models = chat_config.list_models(cfg["base_url"])
+    return models[0] if models else ""
 
 
 def chat_info() -> dict:
     """Quien genera el JSON: el LLM de chat, no el modelo de decision."""
-    return {"tipo": "LLM de chat (instruct)", "url": _chat_url(), "model": _model()}
+    cfg = _cfg()
+    return {
+        "tipo": "LLM de chat (instruct)",
+        "url": cfg["url"],
+        "model": _model(),
+        "vivo": chat_config.probe(cfg["base_url"]),
+    }
 
 
 def _extract_json(text: str) -> dict[str, Any]:
@@ -178,3 +178,77 @@ def from_text(text: str, *, default_type: str = "choice") -> Question:
         except ChatError as e:
             last_err = e
     raise ChatError(f"no se pudo obtener una pregunta valida: {last_err}")
+
+
+_COMPILO_SYSTEM = (
+    _SYSTEM
+    + " Si ademas te dan una lista de backends de decision disponibles, anade la clave "
+    '"backend" con el nombre del backend que debe responder (el que mejor encaje con el '
+    'tipo de pregunta y con su privacidad: local antes que cloud) y la clave "motivo" '
+    "con una frase breve de por que ese y no otro."
+)
+
+
+def compile_question(
+    text: str,
+    *,
+    default_type: str = "choice",
+    backends: list[dict] | None = None,
+) -> tuple[Question, dict]:
+    """Traduce lenguaje natural a (Question tipada, routing).
+
+    El LLM de chat NO decide: compila la pregunta y sugiere quien la responde.
+    La validacion final del routing la hace el codigo (el backend sugerido tiene
+    que existir y soportar el tipo de pregunta).
+    """
+    text = (text or "").strip()
+    if not text:
+        raise ChatError("instruccion vacia")
+    backends = backends or []
+    lista = ", ".join(
+        f"{b['name']} (tipo={b.get('kind','?')}, privacidad={b.get('privacy','local')}, "
+        f"soporta={','.join(b.get('supports') or [])})"
+        for b in backends
+    ) or "ninguno"
+    model = _model()
+    messages = [
+        {"role": "system", "content": _COMPILO_SYSTEM},
+        {
+            "role": "user",
+            "content": (
+                f"Instruccion: {text}\nTipo preferido: {default_type}\n"
+                f"Backends de decision disponibles: {lista}"
+            ),
+        },
+    ]
+    last_err: Exception | None = None
+    for _ in range(2):
+        content = _post_chat(messages, model)
+        try:
+            obj = _extract_json(content)
+            q = Question.model_validate(obj)
+            sugerido = str(obj.get("backend") or "").strip().lower()
+            motivo = str(obj.get("motivo") or "").strip()
+            validos = {b["name"] for b in backends}
+            soporta = {
+                b["name"]: set(b.get("supports") or []) for b in backends
+            }
+            if sugerido in validos and q.type.value in soporta[sugerido]:
+                routing = {"backend": sugerido, "motivo": motivo or "sugerido por el LLM",
+                           "fuente": "llm"}
+            else:
+                routing = {"backend": None, "motivo": "el LLM no dio un backend valido",
+                           "fuente": "llm"}
+            return q, routing
+        except ValidationError as e:
+            last_err = e
+            messages.append({"role": "assistant", "content": content})
+            messages.append({
+                "role": "user",
+                "content": "El JSON no cumple el esquema: "
+                + "; ".join(f"{x['loc'][-1]}: {x['msg']}" for x in e.errors())
+                + ". Devuelve SOLO el JSON corregido.",
+            })
+        except ChatError as e:
+            last_err = e
+    raise ChatError(f"no se pudo compilar la pregunta: {last_err}")

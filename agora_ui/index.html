@@ -83,8 +83,11 @@
       </div>
       <div class="fila acciones">
         <button id="generar" class="ghost" type="button">Generar pregunta</button>
+        <button id="ask" class="primary" type="button">Preguntar (NL -> tipado -> decision)</button>
+        <label class="check"><input type="checkbox" id="ask-todos"> comparar todos los backends</label>
         <label class="check"><input type="checkbox" id="usar-manual"> usar pregunta manual</label>
       </div>
+      <p class="muted" id="ask-info">El LLM traductor se configura en la pesta Modelos.</p>
       <label class="bloque">Pregunta (JSON editable)
         <textarea id="manual" rows="6" spellcheck="false">(vacio)</textarea>
       </label>
@@ -113,6 +116,25 @@
       <h2>Modelos de decision <span class="muted">local o API</span></h2>
       <h3 class="sec">Servidores locales <span class="muted">(arrancar / parar desde aqui)</span></h3>
       <div id="servidores" class="modelos"></div>
+      <h3 class="sec">LLM traductor <span class="muted">(lenguaje natural -> JSON tipado)</span></h3>
+      <div class="fila mt">
+        <label class="grow">URL del LLM de chat
+          <input id="c-url" type="text" placeholder="http://127.0.0.1:8080" class="mono">
+        </label>
+        <label class="grow">Modelo
+          <select id="c-model"></select>
+        </label>
+        <label>Timeout (s)
+          <input id="c-timeout" type="number" min="1" max="600" value="180" class="mono" style="width:70px">
+        </label>
+      </div>
+      <div class="fila acciones">
+        <button id="c-save" class="primary" type="button">Guardar traductor</button>
+        <button id="c-scan" class="ghost" type="button">Detectar LLM locales</button>
+        <span class="muted" id="c-msg"></span>
+      </div>
+      <p class="muted" id="c-detected">LLM locales detectados: -</p>
+
       <h3 class="sec">Configurados</h3>
       <div id="lista-backends" class="modelos"></div>
       <div class="fila mt">
@@ -245,6 +267,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=17"></script>
+  <script src="app.js?v=18"></script>
 </body>
 </html>

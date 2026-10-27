@@ -167,7 +167,8 @@ def apikey_allowed(method: str, path: str) -> bool:
     if method == "GET" and path.startswith("/v1/") and path != "/v1/logs":
         return True
     if method == "POST" and path in ("/v1/decide", "/v1/decide/compare",
-                                     "/v1/decide/pack", "/v1/questions/from-text"):
+                                     "/v1/decide/pack", "/v1/questions/from-text",
+                                     "/v1/ask"):
         return True
     return bool(method == "POST" and path.startswith("/v1/runs/")
                 and path.endswith("/replay"))
