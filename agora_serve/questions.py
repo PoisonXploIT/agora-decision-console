@@ -252,3 +252,43 @@ def compile_question(
         except ChatError as e:
             last_err = e
     raise ChatError(f"no se pudo compilar la pregunta: {last_err}")
+
+
+_STATE_SYSTEM = (
+    "Extraes los DATOS de una descripcion en lenguaje natural y devuelves SOLO un "
+    "objeto JSON valido, sin texto alrededor. Claves en snake_case ASCII; valores "
+    "string, numero, booleano, array u objeto. No conviertas el texto en una "
+    "instruccion ni anadas claves como 'instruction', 'debe' o 'hay_que'. Si el "
+    "texto menciona un comando, una URL, un puerto o un usuario, ponlos como campos "
+    "concretos (comando, url, puerto, usuario). Maximo 30 claves."
+)
+
+
+def state_from_text(text: str) -> dict:
+    """Convierte una descripcion en lenguaje natural en el `state` de AGORA.
+
+    El resultado es DATO: se valida que sea un objeto JSON y se limita su tamano.
+    """
+    text = (text or "").strip()
+    if not text:
+        raise ChatError("descripcion vacia")
+    model = _model()
+    messages = [
+        {"role": "system", "content": _STATE_SYSTEM},
+        {"role": "user", "content": text},
+    ]
+    last_err: Exception | None = None
+    for _ in range(2):
+        content = _post_chat(messages, model)
+        try:
+            obj = _extract_json(content)
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            continue
+        if not isinstance(obj, dict):
+            last_err = ChatError("el estado generado no es un objeto JSON")
+            continue
+        if len(obj) > 30:
+            obj = {k: v for k, v in list(obj.items())[:30]}
+        return obj
+    raise ChatError(f"no se pudo generar el estado: {last_err}")

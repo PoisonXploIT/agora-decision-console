@@ -63,6 +63,17 @@
         <textarea id="estado" rows="9" spellcheck="false">{}</textarea>
       </label>
 
+      <h3 class="sec">Rellenar el estado con el LLM <span class="muted">(texto libre -> JSON)</span></h3>
+      <label class="bloque">Describe lo que se quiere juzgar
+        <textarea id="estado-nl" rows="3" spellcheck="false"
+          placeholder="ej: el agente quiere ejecutar un tar en el directorio trabajo durante la investigacion de un correo sospechoso"></textarea>
+      </label>
+      <div class="fila acciones">
+        <button id="estado-gen" class="ghost" type="button">Generar estado</button>
+        <button id="estado-copy" class="ghost" type="button">Copiar al cuadro Estado</button>
+        <span class="muted" id="estado-msg"></span>
+      </div>
+
       <div class="fila acciones">
         <button id="ejemplo" class="ghost" type="button">Ejemplo</button>
         <button id="informe" class="ghost" type="button">Informe PDF</button>
@@ -267,6 +278,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=19"></script>
+  <script src="app.js?v=20"></script>
 </body>
 </html>

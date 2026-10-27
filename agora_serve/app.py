@@ -97,6 +97,11 @@ class ChatConfigBody(BaseModel):
         return security.validate_backend_url(v)
 
 
+class StateFromTextBody(BaseModel):
+    text: str = Field(min_length=1, max_length=4000,
+                      description="descripcion en lenguaje natural de lo que se quiere juzgar")
+
+
 class AskBody(BaseModel):
     """Pregunta en lenguaje natural: el LLM la compila a JSON tipado y elige quien responde."""
 
@@ -522,6 +527,23 @@ def create_app() -> FastAPI:
             "models": chat_config.list_models(cfg["base_url"]),
             "vivo": chat_config.probe(cfg["base_url"]),
         }
+
+    @app.post("/v1/state/from-text")
+    def state_from_text(body: StateFromTextBody) -> dict:
+        """Rellena el `state` a partir de una descripcion en lenguaje natural.
+
+        El LLM traductor extrae los DATOS (comando, puerto, remitente, severidad...)
+        y devuelve un objeto JSON. No decide nada: solo estructura el estado.
+        """
+        from agora_serve.questions import ChatError, chat_info, state_from_text
+
+        try:
+            state = state_from_text(body.text)
+        except ChatError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+        _check_state_size(state)
+        app.state.log.info("state from-text: %d claves", len(state))
+        return {"state": state, "compiled_by": chat_info()}
 
     @app.get("/v1/chat/models")
     def chat_models(base_url: str | None = None) -> dict:

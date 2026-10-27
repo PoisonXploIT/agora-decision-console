@@ -321,6 +321,40 @@ async function generarPregunta() {
 
 /* ------------------------------------------- LLM traductor (chat) y preguntar */
 
+async function generarEstado() {
+  const texto = $("estado-nl").value.trim();
+  if (!texto) { $("estado-msg").textContent = "describe primero el caso"; return; }
+  $("estado-msg").textContent = "generando estado...";
+  try {
+    const d = await jsonFetch("/v1/state/from-text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: texto }),
+    });
+    const json = JSON.stringify(d.state, null, 2);
+    $("estado").value = json;
+    $("estado-msg").textContent = `estado generado con ${Object.keys(d.state).length} claves: ${json}`;
+  } catch (e) {
+    $("estado-msg").textContent = "error: " + e.message;
+  }
+}
+
+function copiarEstado() {
+  const texto = $("estado-nl").value.trim();
+  if (!texto) { $("estado-msg").textContent = "describe primero el caso"; return; }
+  $("estado-msg").textContent = "generando...";
+  jsonFetch("/v1/state/from-text", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: texto }),
+  }).then((d) => {
+    const json = JSON.stringify(d.state, null, 2);
+    $("estado").value = json;
+    navigator.clipboard && navigator.clipboard.writeText(json);
+    $("estado-msg").textContent = "copiado al cuadro Estado y al portapapeles";
+  }).catch((e) => { $("estado-msg").textContent = "error: " + e.message; });
+}
+
 async function cargarChatConfig() {
   const d = await jsonFetch("/v1/chat/config");
   const cfg = d.config || {};
@@ -1066,6 +1100,8 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("generar").addEventListener("click", generarPregunta);
   $("ask").addEventListener("click", preguntar);
+  $("estado-gen").addEventListener("click", generarEstado);
+  $("estado-copy").addEventListener("click", copiarEstado);
   $("c-save").addEventListener("click", guardarChat);
   $("c-scan").addEventListener("click", escanearChat);
   $("informe").addEventListener("click", abrirInforme);
